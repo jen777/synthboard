@@ -11,15 +11,21 @@ router.get(
 );
 
 // OAuth callback → set session, bounce back to the SPA.
-router.get(
-  "/google/callback",
-  passport.authenticate("google", {
-    failureRedirect: `${config.appUrl}/login?error=auth`,
-  }),
-  (req, res) => {
-    res.redirect(`${config.appUrl}/`);
-  },
-);
+// Custom callback so any OAuth error (e.g. a replayed/expired single-use code
+// on page refresh → invalid_grant) redirects to login instead of throwing a 500.
+router.get("/google/callback", (req, res, next) => {
+  passport.authenticate("google", (err, user) => {
+    if (err || !user) {
+      return res.redirect(`${config.appUrl}/login?error=auth`);
+    }
+    req.logIn(user, (loginErr) => {
+      if (loginErr) {
+        return res.redirect(`${config.appUrl}/login?error=auth`);
+      }
+      return res.redirect(`${config.appUrl}/`);
+    });
+  })(req, res, next);
+});
 
 router.post("/logout", (req, res, next) => {
   req.logout((err) => {

@@ -47,6 +47,13 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Never let the browser cache API responses. Without this, Express's ETag makes
+// /api/user/me return 304 and the SPA reads a stale (logged-out) auth state.
+app.use("/api", (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 app.use("/auth", authRoutes);

@@ -1,0 +1,42 @@
+# Compose variant for a MANAGED/EXTERNAL Postgres (e.g. a cloud database).
+#
+# There is no `db` container here — the server connects to whatever
+# DATABASE_URL points at. Provide credentials via an .env file:
+#
+#   DATABASE_URL=postgres://user:password@db-host:5432/dbname?sslmode=require
+#
+# Usage:
+#   docker compose -f docker-compose.managed-db.yml up -d --build
+#
+# Everything else (no host port binding for the client, NVIDIA LLM config,
+# Google OAuth, quota) matches docker-compose.yml.
+services:
+  server:
+    build: ./server
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_URL: ${APP_URL}
+      DATABASE_URL: ${DATABASE_URL}
+      # Set to true for managed Postgres that requires TLS.
+      DATABASE_SSL: ${DATABASE_SSL:-true}
+      SESSION_SECRET: ${SESSION_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-minimaxai/minimax-m2.7}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-8192}
+      MAX_VISUALIZATIONS_PER_ACCOUNT: ${MAX_VISUALIZATIONS_PER_ACCOUNT:-5}
+
+  client:
+    build:
+      context: ./client
+    restart: unless-stopped
+    # No host port binding — Coolify's reverse proxy routes to this container.
+    # `expose` keeps port 80 internal to the Docker network only.
+    expose:
+      - "80"
+    depends_on:
+      - server

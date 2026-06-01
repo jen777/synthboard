@@ -20,6 +20,12 @@ export const config = {
   appUrl,
 
   databaseUrl: required("DATABASE_URL"),
+  // Enable TLS to the database. Most managed Postgres services require it.
+  // Set DATABASE_SSL=true (or "require") for those; leave unset for a local
+  // container that speaks plain TCP.
+  databaseSsl: ["true", "require", "1"].includes(
+    (process.env.DATABASE_SSL || "").toLowerCase(),
+  ),
   sessionSecret: required("SESSION_SECRET"),
 
   google: {

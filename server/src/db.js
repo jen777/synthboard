@@ -1,7 +1,13 @@
 import pg from "pg";
 import { config } from "./config.js";
 
-export const pool = new pg.Pool({ connectionString: config.databaseUrl });
+export const pool = new pg.Pool({
+  connectionString: config.databaseUrl,
+  // Managed Postgres typically terminates TLS with a cert chain Node won't
+  // verify out of the box; rejectUnauthorized:false keeps the connection
+  // encrypted without requiring the CA bundle.
+  ssl: config.databaseSsl ? { rejectUnauthorized: false } : undefined,
+});
 
 export function query(text, params) {
   return pool.query(text, params);

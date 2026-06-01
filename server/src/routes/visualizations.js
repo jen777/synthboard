@@ -48,6 +48,31 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
+// Save edits to a diagram's draw.io XML (from the embedded editor).
+router.put("/:id", async (req, res, next) => {
+  const { drawioXml } = req.body || {};
+  if (!drawioXml || typeof drawioXml !== "string" || !drawioXml.trim()) {
+    return res.status(400).json({ error: "drawioXml is required" });
+  }
+  if (drawioXml.length > 5_000_000) {
+    return res.status(413).json({ error: "Diagram is too large" });
+  }
+  try {
+    const { rowCount } = await query(
+      `UPDATE visualizations
+          SET drawio_xml = $1
+        WHERE id = $2 AND user_id = $3`,
+      [drawioXml, req.params.id, req.user.id],
+    );
+    if (rowCount === 0) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Generate a new visualization, enforcing the per-account quota atomically.
 router.post("/", async (req, res, next) => {
   const { sourceText, preset, title } = req.body || {};

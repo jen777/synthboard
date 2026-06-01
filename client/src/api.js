@@ -26,4 +26,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  update: (id, drawioXml) =>
+    request(`/api/visualizations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ drawioXml }),
+    }),
 };

@@ -2,7 +2,8 @@
 
 Turn notes, meeting transcripts, and documents into **draw.io (diagrams.net)**
 visualizations — flowcharts, UML, ER diagrams, mind maps, and infographics —
-powered by Claude.
+powered by an LLM (NVIDIA-hosted `minimaxai/minimax-m2.7` via the
+OpenAI-compatible API).
 
 - **Google sign-in** (OAuth 2.0)
 - **5 visualizations per account** (configurable quota)
@@ -19,7 +20,7 @@ powered by Claude.
 │ (nginx + │                     │ (Express │        │            │
 │  React)  │ ◀───── SPA ──────── │  + pg)   │        └────────────┘
 └──────────┘                     └────┬─────┘
-   :8080                              │ Claude API
+   :8080                              │ NVIDIA LLM API
                                       ▼
                               draw.io XML generation
 ```
@@ -27,7 +28,7 @@ powered by Claude.
 - The **client** container (nginx) serves the built React SPA and reverse-proxies
   `/api/*` and `/auth/*` to the server — so session cookies stay same-origin.
 - The **server** handles Google OAuth, sessions (stored in Postgres), quota
-  enforcement, and diagram generation via the Anthropic SDK.
+  enforcement, and diagram generation via the OpenAI SDK (NVIDIA endpoint).
 - Diagrams render in the browser using the hosted diagrams.net viewer.
 
 ## Prerequisites
@@ -36,13 +37,13 @@ powered by Claude.
    [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
    Set the authorized redirect URI to `http://localhost:8080/auth/google/callback`
    (match your `APP_URL`).
-2. **Anthropic API key** — from [console.anthropic.com](https://console.anthropic.com).
+2. **NVIDIA API key** — from [build.nvidia.com](https://build.nvidia.com).
 
 ## Quick start (Docker)
 
 ```bash
 cp .env.example .env
-# Fill in GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ANTHROPIC_API_KEY,
+# Fill in GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, NVIDIA_API_KEY,
 # and a strong SESSION_SECRET (openssl rand -hex 32).
 
 docker compose up --build
@@ -58,7 +59,8 @@ Notable ones:
 | Variable | Description |
 | --- | --- |
 | `APP_URL` | Public URL (drives OAuth callback + CORS). |
-| `ANTHROPIC_MODEL` | Claude model for generation. Defaults to `claude-opus-4-8`. |
+| `LLM_MODEL` | Model for generation. Defaults to `minimaxai/minimax-m2.7`. |
+| `LLM_BASE_URL` | OpenAI-compatible endpoint. Defaults to NVIDIA's. |
 | `MAX_VISUALIZATIONS_PER_ACCOUNT` | Per-account quota. Defaults to `5`. |
 
 ## Local development (without Docker)
@@ -70,7 +72,7 @@ Run Postgres (e.g. `docker compose up db`), then:
 cd server && npm install && \
   DATABASE_URL=postgres://synthboard:change-me-in-production@localhost:5432/synthboard \
   APP_URL=http://localhost:5173 \
-  SESSION_SECRET=dev GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… ANTHROPIC_API_KEY=… \
+  SESSION_SECRET=dev GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… NVIDIA_API_KEY=… \
   npm run dev
 
 # Terminal 2 — client (Vite proxies /api + /auth to :3000)
@@ -88,8 +90,8 @@ For local dev, set the Google redirect URI to
 
 ## How generation works
 
-The source text is sent to Claude with a cacheable system prompt that defines
-the draw.io XML output contract, plus preset-specific guidance (flowchart, UML,
+The source text is sent to the LLM with a system prompt that defines the
+draw.io XML output contract, plus preset-specific guidance (flowchart, UML,
 sequence, ER, mind map, infographic). The response is parsed to a valid
 `<mxfile>` document, stored, and rendered.
 

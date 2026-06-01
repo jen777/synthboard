@@ -1,11 +1,14 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { config } from "../config.js";
 import { PRESETS } from "./presets.js";
 
-const client = new Anthropic({ apiKey: config.anthropic.apiKey });
+// OpenAI-compatible client pointed at NVIDIA's inference endpoint.
+const client = new OpenAI({
+  apiKey: config.llm.apiKey,
+  baseURL: config.llm.baseUrl,
+});
 
-// Stable, cacheable instructions on how to emit draw.io XML. Kept byte-identical
-// across requests so prompt caching kicks in (volatile input goes in the user turn).
+// Instructions on how to emit draw.io XML. Kept stable across requests.
 const BASE_SYSTEM = `You are SynthBoard, an expert at turning unstructured notes, meeting transcripts, and documents into clear draw.io (diagrams.net) diagrams.
 
 OUTPUT CONTRACT — follow exactly:
@@ -65,9 +68,6 @@ function extractDrawioXml(text) {
  */
 export async function generateDrawio({ preset, sourceText, title }) {
   const presetDef = PRESETS[preset];
-  const system = [
-    { type: "text", text: BASE_SYSTEM, cache_control: { type: "ephemeral" } },
-  ];
 
   const userPrompt = `Diagram type: ${presetDef.label}
 ${presetDef.guidance}
@@ -79,27 +79,24 @@ ${sourceText}
 
 Return only the draw.io <mxfile> XML.`;
 
-  // Stream to stay under HTTP timeouts on large diagrams; adaptive thinking
-  // for the structural reasoning. get the final message at the end.
-  const stream = client.messages.stream({
-    model: config.anthropic.model,
-    max_tokens: 32000,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "high" },
-    system,
-    messages: [{ role: "user", content: userPrompt }],
+  const completion = await client.chat.completions.create({
+    model: config.llm.model,
+    messages: [
+      { role: "system", content: BASE_SYSTEM },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 1,
+    top_p: 0.95,
+    max_tokens: config.llm.maxTokens,
+    stream: false,
   });
 
-  const message = await stream.finalMessage();
-  const text = message.content
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("");
+  const text = completion.choices?.[0]?.message?.content || "";
 
   const xml = extractDrawioXml(text);
   if (!xml) {
     throw new Error("Model did not return valid draw.io XML.");
   }
 
-  return { xml, usage: message.usage };
+  return { xml, usage: completion.usage };
 }

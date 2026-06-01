@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { query, pool } from "../db.js";
 import { config } from "../config.js";
-import { generateDrawio } from "../services/anthropic.js";
+import { generateDrawio } from "../services/llm.js";
 import { isValidPreset, listPresets } from "../services/presets.js";
 
 const router = Router();

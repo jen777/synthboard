@@ -24,9 +24,11 @@ export const config = {
     callbackUrl: `${process.env.APP_URL || "http://localhost:8080"}/auth/google/callback`,
   },
 
-  anthropic: {
-    apiKey: required("ANTHROPIC_API_KEY"),
-    model: process.env.ANTHROPIC_MODEL || "claude-opus-4-8",
+  llm: {
+    apiKey: required("NVIDIA_API_KEY"),
+    baseUrl: process.env.LLM_BASE_URL || "https://integrate.api.nvidia.com/v1",
+    model: process.env.LLM_MODEL || "minimaxai/minimax-m2.7",
+    maxTokens: parseInt(process.env.LLM_MAX_TOKENS || "8192", 10),
   },
 
   maxVisualizationsPerAccount: parseInt(

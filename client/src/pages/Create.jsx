@@ -60,6 +60,7 @@ export default function Create() {
                 key={p.key}
                 className={`preset ${preset === p.key ? "selected" : ""}`}
                 onClick={() => setPreset(p.key)}
+                disabled={submitting}
               >
                 <b>{p.label}</b>
                 <small>{p.description}</small>
@@ -75,6 +76,7 @@ export default function Create() {
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. Q3 Planning Sync"
             style={{ marginTop: 8 }}
+            disabled={submitting}
           />
         </div>
 
@@ -85,6 +87,7 @@ export default function Create() {
             onChange={(e) => setSourceText(e.target.value)}
             placeholder="Paste meeting notes, a transcript, a spec, or any text to visualize…"
             style={{ marginTop: 8 }}
+            disabled={submitting}
             required
           />
         </div>

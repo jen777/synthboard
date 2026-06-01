@@ -64,6 +64,10 @@ async function start() {
   await initSchema();
   app.listen(config.port, () => {
     console.log(`SynthBoard API listening on :${config.port}`);
+    console.log(`APP_URL: ${config.appUrl}`);
+    console.log(
+      `Google OAuth callback (must match an Authorized redirect URI): ${config.google.callbackUrl}`,
+    );
   });
 }
 

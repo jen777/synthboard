@@ -9,10 +9,15 @@ function required(name) {
   return value;
 }
 
+// Normalize APP_URL once: strip any trailing slash so derived URLs
+// (e.g. the OAuth callback) never end up with a double slash, which would
+// cause Google's redirect_uri_mismatch.
+const appUrl = (process.env.APP_URL || "http://localhost:8080").replace(/\/+$/, "");
+
 export const config = {
   env: process.env.NODE_ENV || "development",
   port: parseInt(process.env.PORT || "3000", 10),
-  appUrl: process.env.APP_URL || "http://localhost:8080",
+  appUrl,
 
   databaseUrl: required("DATABASE_URL"),
   sessionSecret: required("SESSION_SECRET"),
@@ -21,7 +26,7 @@ export const config = {
     clientId: required("GOOGLE_CLIENT_ID"),
     clientSecret: required("GOOGLE_CLIENT_SECRET"),
     // nginx proxies /auth/* to this server, so the callback is on APP_URL.
-    callbackUrl: `${process.env.APP_URL || "http://localhost:8080"}/auth/google/callback`,
+    callbackUrl: `${appUrl}/auth/google/callback`,
   },
 
   llm: {

@@ -23,8 +23,12 @@ CREATE TABLE IF NOT EXISTS users (
   email       TEXT NOT NULL,
   name        TEXT,
   avatar_url  TEXT,
+  is_admin    BOOLEAN NOT NULL DEFAULT false,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Backfill for databases created before is_admin existed.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS visualizations (
   id          BIGSERIAL PRIMARY KEY,
@@ -38,6 +42,13 @@ CREATE TABLE IF NOT EXISTS visualizations (
 
 CREATE INDEX IF NOT EXISTS idx_visualizations_user
   ON visualizations(user_id, created_at DESC);
+
+-- Runtime-editable application settings (key/value), managed via the admin panel.
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 export async function initSchema() {

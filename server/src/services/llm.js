@@ -1,12 +1,20 @@
 import OpenAI from "openai";
 import { config } from "../config.js";
+import { getSetting } from "./settings.js";
 import { PRESETS } from "./presets.js";
 
-// OpenAI-compatible client pointed at NVIDIA's inference endpoint.
-const client = new OpenAI({
-  apiKey: config.llm.apiKey,
-  baseURL: config.llm.baseUrl,
-});
+// OpenAI-compatible client. The base URL is admin-configurable at runtime, so we
+// lazily (re)build the client whenever it changes. The API key stays in env.
+let client = null;
+let clientBaseUrl = null;
+function getClient() {
+  const baseURL = getSetting("llm_base_url") || config.llm.baseUrl;
+  if (!client || clientBaseUrl !== baseURL) {
+    client = new OpenAI({ apiKey: config.llm.apiKey, baseURL });
+    clientBaseUrl = baseURL;
+  }
+  return client;
+}
 
 // Instructions on how to emit draw.io XML. Kept stable across requests.
 const BASE_SYSTEM = `You are SynthBoard, an expert at turning unstructured notes, meeting transcripts, and documents into clear draw.io (diagrams.net) diagrams.
@@ -79,15 +87,15 @@ ${sourceText}
 
 Return only the draw.io <mxfile> XML.`;
 
-  const completion = await client.chat.completions.create({
-    model: config.llm.model,
+  const completion = await getClient().chat.completions.create({
+    model: getSetting("llm_model") || config.llm.model,
     messages: [
       { role: "system", content: BASE_SYSTEM },
       { role: "user", content: userPrompt },
     ],
-    temperature: 1,
-    top_p: 0.95,
-    max_tokens: config.llm.maxTokens,
+    temperature: getSetting("llm_temperature") ?? 1,
+    top_p: getSetting("llm_top_p") ?? 0.95,
+    max_tokens: getSetting("llm_max_tokens") || config.llm.maxTokens,
     stream: false,
   });
 

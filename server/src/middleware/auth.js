@@ -5,3 +5,11 @@ export function requireAuth(req, res, next) {
   }
   return res.status(401).json({ error: "Not authenticated" });
 }
+
+// Gate routes behind an authenticated admin.
+export function requireAdmin(req, res, next) {
+  if (req.isAuthenticated && req.isAuthenticated() && req.user?.is_admin) {
+    return next();
+  }
+  return res.status(403).json({ error: "Admin access required" });
+}

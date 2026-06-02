@@ -108,6 +108,38 @@ textarea { resize: vertical; min-height: 220px; }
   border-radius: 12px; background: #fff;
 }
 
+button.danger {
+  border-color: var(--danger);
+  color: #f3b6b4;
+}
+button.danger:hover:not(:disabled) { background: rgba(217,83,79,0.15); }
+
+.tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); }
+.tab {
+  border: none; border-bottom: 2px solid transparent; border-radius: 0;
+  background: transparent; color: var(--muted); padding: 10px 14px;
+}
+.tab:hover:not(:disabled) { background: transparent; color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td {
+  text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.table th { color: var(--muted); font-weight: 600; font-size: 13px; }
+
+.bars { display: flex; align-items: flex-end; gap: 6px; height: 140px; }
+.bar-col {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-end; gap: 4px; height: 100%;
+}
+.bar {
+  width: 100%; min-height: 2px; background: var(--accent);
+  border-radius: 4px 4px 0 0;
+}
+.bar-col small { font-size: 10px; }
+
 .center { min-height: 70vh; display: grid; place-items: center; }
 .stack { display: flex; flex-direction: column; gap: 14px; }
 .spinner {

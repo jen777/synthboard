@@ -24,6 +24,11 @@ export default function Layout({ children }) {
               {quota.remaining} / {quota.limit} left
             </span>
           )}
+          {user.isAdmin && (
+            <Link to="/admin" className="muted">
+              Admin
+            </Link>
+          )}
           <span className="muted">{user.name || user.email}</span>
           {user.avatarUrl && (
             <img

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { query, pool } from "../db.js";
-import { config } from "../config.js";
+import { getSetting } from "../services/settings.js";
 import { generateDrawio } from "../services/llm.js";
 import { isValidPreset, listPresets } from "../services/presets.js";
 
@@ -87,7 +87,7 @@ router.post("/", async (req, res, next) => {
     return res.status(413).json({ error: "Source text is too large (max 100k chars)" });
   }
 
-  const limit = config.maxVisualizationsPerAccount;
+  const limit = getSetting("max_visualizations_per_account");
 
   // Quota check inside a transaction with a row lock on the user, so two
   // concurrent requests can't both slip past the limit.

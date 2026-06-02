@@ -6,10 +6,12 @@ import morgan from "morgan";
 
 import { config } from "./config.js";
 import { pool, initSchema } from "./db.js";
+import { initSettings } from "./services/settings.js";
 import passport from "./auth/passport.js";
 import authRoutes from "./auth/routes.js";
 import userRoutes from "./routes/user.js";
 import visualizationRoutes from "./routes/visualizations.js";
+import adminRoutes from "./routes/admin.js";
 
 const app = express();
 
@@ -59,6 +61,7 @@ app.get("/api/health", (req, res) => res.json({ ok: true }));
 app.use("/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/visualizations", visualizationRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Centralised error handler.
 // eslint-disable-next-line no-unused-vars
@@ -69,6 +72,7 @@ app.use((err, req, res, next) => {
 
 async function start() {
   await initSchema();
+  await initSettings();
   app.listen(config.port, () => {
     console.log(`SynthBoard API listening on :${config.port}`);
     console.log(`APP_URL: ${config.appUrl}`);

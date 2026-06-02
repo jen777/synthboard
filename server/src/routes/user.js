@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
-import { config } from "../config.js";
+import { getSetting } from "../services/settings.js";
 
 const router = Router();
 
@@ -15,7 +15,7 @@ router.get("/me", async (req, res) => {
     [req.user.id],
   );
   const used = rows[0].count;
-  const limit = config.maxVisualizationsPerAccount;
+  const limit = getSetting("max_visualizations_per_account");
 
   res.json({
     user: {
@@ -23,6 +23,7 @@ router.get("/me", async (req, res) => {
       email: req.user.email,
       name: req.user.name,
       avatarUrl: req.user.avatar_url,
+      isAdmin: !!req.user.is_admin,
     },
     quota: { used, limit, remaining: Math.max(0, limit - used) },
   });

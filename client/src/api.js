@@ -31,4 +31,22 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ drawioXml }),
     }),
+
+  admin: {
+    stats: () => request("/api/admin/stats"),
+    users: () => request("/api/admin/users"),
+    setUserAdmin: (id, isAdmin) =>
+      request(`/api/admin/users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isAdmin }),
+      }),
+    deleteUser: (id) =>
+      request(`/api/admin/users/${id}`, { method: "DELETE" }),
+    settings: () => request("/api/admin/settings"),
+    saveSettings: (settings) =>
+      request("/api/admin/settings", {
+        method: "PUT",
+        body: JSON.stringify(settings),
+      }),
+  },
 };

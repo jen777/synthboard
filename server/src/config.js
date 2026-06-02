@@ -46,4 +46,12 @@ export const config = {
     process.env.MAX_VISUALIZATIONS_PER_ACCOUNT || "5",
     10,
   ),
+
+  // Emails (comma-separated) that are automatically granted admin on login.
+  // Used to bootstrap the first administrator; further admins can be promoted
+  // from within the admin panel.
+  adminEmails: (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
 };

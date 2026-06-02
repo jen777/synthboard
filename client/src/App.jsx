@@ -6,6 +6,7 @@ import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Create from "./pages/Create.jsx";
 import Viewer from "./pages/Viewer.jsx";
+import Admin from "./pages/Admin.jsx";
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/create" element={<Create />} />
             <Route path="/v/:id" element={<Viewer />} />
+            {user.isAdmin && <Route path="/admin" element={<Admin />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout>

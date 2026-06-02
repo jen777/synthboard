@@ -88,6 +88,12 @@ router.post("/", async (req, res, next) => {
   }
 
   const limit = getSetting("max_visualizations_per_account");
+  const reqStart = Date.now();
+  console.log("[viz] generate request", {
+    userId: req.user.id,
+    preset,
+    sourceChars: sourceText.length,
+  });
 
   // Quota check inside a transaction with a row lock on the user, so two
   // concurrent requests can't both slip past the limit.
@@ -132,6 +138,12 @@ router.post("/", async (req, res, next) => {
 
     await dbClient.query("COMMIT");
 
+    console.log("[viz] generate done", {
+      userId: req.user.id,
+      vizId: rows[0].id,
+      totalMs: Date.now() - reqStart,
+    });
+
     const used = countRows[0].count + 1;
     res.status(201).json({
       visualization: { ...rows[0], drawio_xml: xml },
@@ -139,6 +151,12 @@ router.post("/", async (req, res, next) => {
     });
   } catch (err) {
     await dbClient.query("ROLLBACK").catch(() => {});
+    console.error("[viz] generate failed", {
+      userId: req.user?.id,
+      preset,
+      totalMs: Date.now() - reqStart,
+      message: err?.message,
+    });
     next(err);
   } finally {
     dbClient.release();

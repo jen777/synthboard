@@ -3,6 +3,15 @@ import { config } from "../config.js";
 import { getSetting } from "./settings.js";
 import { PRESETS } from "./presets.js";
 
+// Tagged logger so generation logs are easy to grep in production.
+function log(msg, extra) {
+  if (extra !== undefined) {
+    console.log(`[llm] ${msg}`, extra);
+  } else {
+    console.log(`[llm] ${msg}`);
+  }
+}
+
 // OpenAI-compatible client. The base URL is admin-configurable at runtime, so we
 // lazily (re)build the client whenever it changes. The API key stays in env.
 let client = null;
@@ -10,8 +19,18 @@ let clientBaseUrl = null;
 function getClient() {
   const baseURL = getSetting("llm_base_url") || config.llm.baseUrl;
   if (!client || clientBaseUrl !== baseURL) {
-    client = new OpenAI({ apiKey: config.llm.apiKey, baseURL });
+    client = new OpenAI({
+      apiKey: config.llm.apiKey,
+      baseURL,
+      timeout: config.llm.timeoutMs,
+      maxRetries: config.llm.maxRetries,
+    });
     clientBaseUrl = baseURL;
+    log("client (re)created", {
+      baseURL,
+      timeoutMs: config.llm.timeoutMs,
+      maxRetries: config.llm.maxRetries,
+    });
   }
   return client;
 }
@@ -87,24 +106,67 @@ ${sourceText}
 
 Return only the draw.io <mxfile> XML.`;
 
-  const completion = await getClient().chat.completions.create({
-    model: getSetting("llm_model") || config.llm.model,
-    messages: [
-      { role: "system", content: BASE_SYSTEM },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: getSetting("llm_temperature") ?? 1,
-    top_p: getSetting("llm_top_p") ?? 0.95,
-    max_tokens: getSetting("llm_max_tokens") || config.llm.maxTokens,
-    stream: false,
+  const model = getSetting("llm_model") || config.llm.model;
+  const maxTokens = getSetting("llm_max_tokens") || config.llm.maxTokens;
+
+  log("request →", {
+    model,
+    preset,
+    maxTokens,
+    promptChars: userPrompt.length,
+    sourceChars: sourceText.length,
   });
 
+  const startedAt = Date.now();
+  let completion;
+  try {
+    completion = await getClient().chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: BASE_SYSTEM },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: getSetting("llm_temperature") ?? 1,
+      top_p: getSetting("llm_top_p") ?? 0.95,
+      max_tokens: maxTokens,
+      stream: false,
+    });
+  } catch (err) {
+    const elapsedMs = Date.now() - startedAt;
+    // Surface the cause clearly: timeout/abort vs. upstream HTTP status.
+    log("request ✗ failed", {
+      elapsedMs,
+      name: err?.name,
+      status: err?.status,
+      code: err?.code,
+      message: err?.message,
+    });
+    throw err;
+  }
+
+  const elapsedMs = Date.now() - startedAt;
   const text = completion.choices?.[0]?.message?.content || "";
+  const finishReason = completion.choices?.[0]?.finish_reason;
+
+  log("response ←", {
+    elapsedMs,
+    finishReason,
+    contentChars: text.length,
+    usage: completion.usage,
+  });
+
+  if (finishReason === "length") {
+    log("⚠ response truncated (hit max_tokens) — consider raising Max tokens");
+  }
 
   const xml = extractDrawioXml(text);
   if (!xml) {
+    log("✗ could not extract draw.io XML from response", {
+      preview: text.slice(0, 300),
+    });
     throw new Error("Model did not return valid draw.io XML.");
   }
 
+  log("✓ extracted XML", { xmlChars: xml.length });
   return { xml, usage: completion.usage };
 }

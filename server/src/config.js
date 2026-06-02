@@ -40,6 +40,10 @@ export const config = {
     baseUrl: process.env.LLM_BASE_URL || "https://integrate.api.nvidia.com/v1",
     model: process.env.LLM_MODEL || "minimaxai/minimax-m2.7",
     maxTokens: parseInt(process.env.LLM_MAX_TOKENS || "8192", 10),
+    // Abort an upstream call that runs longer than this so we log a clear
+    // timeout instead of hanging until the reverse proxy returns a 504.
+    timeoutMs: parseInt(process.env.LLM_TIMEOUT_MS || "120000", 10),
+    maxRetries: parseInt(process.env.LLM_MAX_RETRIES || "1", 10),
   },
 
   maxVisualizationsPerAccount: parseInt(

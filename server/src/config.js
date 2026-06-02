@@ -41,9 +41,12 @@ export const config = {
     model: process.env.LLM_MODEL || "minimaxai/minimax-m2.7",
     maxTokens: parseInt(process.env.LLM_MAX_TOKENS || "8192", 10),
     // Abort an upstream call that runs longer than this so we log a clear
-    // timeout instead of hanging until the reverse proxy returns a 504.
-    timeoutMs: parseInt(process.env.LLM_TIMEOUT_MS || "120000", 10),
-    maxRetries: parseInt(process.env.LLM_MAX_RETRIES || "1", 10),
+    // timeout instead of hanging until the reverse proxy returns a 504. Keep it
+    // just under the proxy read timeout (nginx is 300s here).
+    timeoutMs: parseInt(process.env.LLM_TIMEOUT_MS || "280000", 10),
+    // Retries are off by default: retrying a slow reasoning model just burns
+    // another full timeout window without helping.
+    maxRetries: parseInt(process.env.LLM_MAX_RETRIES || "0", 10),
   },
 
   maxVisualizationsPerAccount: parseInt(

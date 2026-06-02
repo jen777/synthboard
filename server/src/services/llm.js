@@ -118,9 +118,16 @@ Return only the draw.io <mxfile> XML.`;
   });
 
   const startedAt = Date.now();
-  let completion;
+  let text = "";
+  let finishReason;
+  let usage;
+  let chunks = 0;
+  let firstTokenMs = null;
   try {
-    completion = await getClient().chat.completions.create({
+    // Stream the completion. Continuous data flow means a slow-but-progressing
+    // generation isn't killed by an idle timeout, and we get visibility into
+    // time-to-first-token vs. total generation time.
+    const stream = await getClient().chat.completions.create({
       model,
       messages: [
         { role: "system", content: BASE_SYSTEM },
@@ -129,13 +136,32 @@ Return only the draw.io <mxfile> XML.`;
       temperature: getSetting("llm_temperature") ?? 1,
       top_p: getSetting("llm_top_p") ?? 0.95,
       max_tokens: maxTokens,
-      stream: false,
+      stream: true,
+      stream_options: { include_usage: true },
     });
+
+    for await (const chunk of stream) {
+      const choice = chunk.choices?.[0];
+      const delta = choice?.delta?.content || "";
+      if (delta) {
+        if (firstTokenMs === null) {
+          firstTokenMs = Date.now() - startedAt;
+          log("first token", { firstTokenMs });
+        }
+        text += delta;
+        chunks++;
+      }
+      if (choice?.finish_reason) finishReason = choice.finish_reason;
+      if (chunk.usage) usage = chunk.usage;
+    }
   } catch (err) {
     const elapsedMs = Date.now() - startedAt;
     // Surface the cause clearly: timeout/abort vs. upstream HTTP status.
     log("request ✗ failed", {
       elapsedMs,
+      firstTokenMs,
+      chunks,
+      contentChars: text.length,
       name: err?.name,
       status: err?.status,
       code: err?.code,
@@ -145,14 +171,14 @@ Return only the draw.io <mxfile> XML.`;
   }
 
   const elapsedMs = Date.now() - startedAt;
-  const text = completion.choices?.[0]?.message?.content || "";
-  const finishReason = completion.choices?.[0]?.finish_reason;
 
   log("response ←", {
     elapsedMs,
+    firstTokenMs,
+    chunks,
     finishReason,
     contentChars: text.length,
-    usage: completion.usage,
+    usage,
   });
 
   if (finishReason === "length") {
@@ -168,5 +194,5 @@ Return only the draw.io <mxfile> XML.`;
   }
 
   log("✓ extracted XML", { xmlChars: xml.length });
-  return { xml, usage: completion.usage };
+  return { xml, usage };
 }

@@ -55,7 +55,6 @@ button {
     border-color 0.15s ease;
 }
 button:hover:not(:disabled) {
-  background: #fff;
   border-color: var(--accent);
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
@@ -71,6 +70,8 @@ button.primary {
   box-shadow: 0 6px 16px rgba(109, 94, 252, 0.32);
 }
 button.primary:hover:not(:disabled) {
+  background: var(--grad-accent);
+  filter: brightness(1.05);
   box-shadow: 0 10px 24px rgba(109, 94, 252, 0.42);
   transform: translateY(-1px);
 }

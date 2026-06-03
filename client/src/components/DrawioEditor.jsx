@@ -48,13 +48,13 @@ export default function DrawioEditor({ xml, title, onChange }) {
 
       switch (msg.event) {
         case "init":
-          // Editor ready — load the diagram. dark/fit/title per the discussion.
+          // Editor ready — load the diagram. Light theme to match the app.
           post({
             action: "load",
             xml: xmlRef.current || "",
             title: titleRef.current || "Diagram",
             autosave: 1,
-            dark: true,
+            dark: false,
             modified: "unsavedChanges",
           });
           break;

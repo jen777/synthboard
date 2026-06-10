@@ -1,0 +1,72 @@
+# Build the single-container image in Azure Container Registry and roll it out
+# to the existing Container App. This handles CONTINUOUS DEPLOYMENT only — the
+# infrastructure (ACR, Postgres Flexible Server, Container Apps env + app) must
+# already exist, provisioned once with `azure/deploy.sh`.
+#
+# Required configuration (Settings → Secrets and variables → Actions):
+#   Secret  AZURE_CREDENTIALS        JSON from:
+#     az ad sp create-for-rbac --name synthboard-cicd --role contributor \
+#       --scopes /subscriptions/<sub-id>/resourceGroups/<resource-group> \
+#       --sdk-auth
+#   Variable AZURE_RESOURCE_GROUP    e.g. synthboard-rg
+#   Variable AZURE_ACR_NAME          e.g. synthboardacr1234  (name only, no .azurecr.io)
+#   Variable AZURE_CONTAINERAPP_NAME e.g. synthboard
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+    # Skip docs-only changes that can't affect the running app.
+    paths-ignore:
+      - "**/*.md"
+      - "azure/.env.azure.example"
+  workflow_dispatch: {}
+
+# Avoid overlapping deploys racing to update the same Container App.
+concurrency:
+  group: azure-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build image in ACR
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            set -euo pipefail
+            az acr build \
+              --registry "${{ vars.AZURE_ACR_NAME }}" \
+              --file Dockerfile.azure \
+              --image "synthboard:${{ github.sha }}" \
+              --image "synthboard:latest" \
+              .
+
+      - name: Deploy to Container App
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            set -euo pipefail
+            az extension add --name containerapp --upgrade --only-show-errors 1>/dev/null || true
+            LOGIN_SERVER="$(az acr show -n '${{ vars.AZURE_ACR_NAME }}' --query loginServer -o tsv)"
+            az containerapp update \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --name "${{ vars.AZURE_CONTAINERAPP_NAME }}" \
+              --image "${LOGIN_SERVER}/synthboard:${{ github.sha }}" \
+              --only-show-errors 1>/dev/null
+            FQDN="$(az containerapp show \
+              --resource-group '${{ vars.AZURE_RESOURCE_GROUP }}' \
+              --name '${{ vars.AZURE_CONTAINERAPP_NAME }}' \
+              --query properties.configuration.ingress.fqdn -o tsv)"
+            echo "Deployed synthboard:${{ github.sha }} → https://${FQDN}" >> "$GITHUB_STEP_SUMMARY"

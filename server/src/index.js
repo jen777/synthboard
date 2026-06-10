@@ -1,3 +1,6 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import express from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
@@ -62,6 +65,26 @@ app.use("/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/visualizations", visualizationRoutes);
 app.use("/api/admin", adminRoutes);
+
+// Single-container mode (e.g. Azure Container Apps): serve the built React SPA
+// from this same Node process instead of a separate nginx container. Enabled by
+// SERVE_STATIC=true; the Azure Dockerfile copies the Vite build into PUBLIC_DIR
+// (default ./public). The two-container docker-compose setup leaves this off and
+// keeps nginx serving the SPA.
+if (process.env.SERVE_STATIC === "true") {
+  const dirname = path.dirname(fileURLToPath(import.meta.url));
+  const publicDir = path.resolve(
+    process.env.PUBLIC_DIR || path.join(dirname, "../public"),
+  );
+  app.use(express.static(publicDir));
+  // SPA fallback: any non-API/auth GET returns index.html so client-side routes
+  // resolve. The negative lookahead keeps unknown /api and /auth paths 404-ing
+  // through the handlers above instead of being swallowed here.
+  app.get(/^\/(?!api\/|auth\/).*/, (req, res) => {
+    res.sendFile(path.join(publicDir, "index.html"));
+  });
+  console.log(`Serving SPA from ${publicDir}`);
+}
 
 // Centralised error handler.
 // eslint-disable-next-line no-unused-vars

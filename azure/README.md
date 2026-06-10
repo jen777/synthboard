@@ -112,6 +112,36 @@ psql "host=<server>.postgres.database.azure.com port=5432 dbname=synthboard \
       user=synthadmin password=<pw> sslmode=require"
 ```
 
+## Continuous deployment (GitHub Actions)
+
+[`.github/workflows/azure-deploy.yml`](../.github/workflows/azure-deploy.yml)
+rebuilds the image in ACR and rolls it out to the Container App on every push to
+`main` (and on manual dispatch). It handles **deployment only** — run
+`azure/deploy.sh` once first to create the infrastructure.
+
+One-time setup. Create a service principal scoped to the resource group:
+
+```bash
+SUB_ID=$(az account show --query id -o tsv)
+az ad sp create-for-rbac --name synthboard-cicd --role contributor \
+  --scopes /subscriptions/$SUB_ID/resourceGroups/synthboard-rg --sdk-auth
+```
+
+Then in the repo under **Settings → Secrets and variables → Actions**:
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| Secret | `AZURE_CREDENTIALS` | the full JSON printed above |
+| Variable | `AZURE_RESOURCE_GROUP` | e.g. `synthboard-rg` |
+| Variable | `AZURE_ACR_NAME` | registry name only, e.g. `synthboardacr1234` |
+| Variable | `AZURE_CONTAINERAPP_NAME` | e.g. `synthboard` |
+
+Each run tags the image with the commit SHA (and `latest`) and updates the app
+to that exact SHA, so rollbacks are just `az containerapp update --image
+<acr>/synthboard:<old-sha>`. For a keyless setup, swap the service-principal
+secret for OIDC federated credentials and drop `creds` from the `azure/login`
+step.
+
 ## Notes & production hardening
 
 - **Networking:** the Postgres firewall is opened to *Azure services* for

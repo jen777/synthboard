@@ -1,0 +1,39 @@
+# Single-container image for Azure: the React SPA and the Express API run in one
+# Node process (no separate nginx container). Express serves the built SPA and
+# handles /api + /auth, so everything is same-origin and the session cookie works.
+#
+# Build locally:
+#   docker build -f Dockerfile.azure -t synthboard:azure .
+# Or build in the cloud (no local Docker needed):
+#   az acr build -f Dockerfile.azure -t synthboard:latest -r <registry> .
+
+# ── Stage 1: build the React client ───────────────────────────
+FROM node:20-alpine AS client-build
+WORKDIR /client
+COPY client/package.json client/package-lock.json* ./
+RUN npm install
+COPY client/ ./
+RUN npm run build
+
+# ── Stage 2: server runtime (also serves the SPA) ─────────────
+FROM node:20-alpine
+WORKDIR /app
+
+# Install server dependencies first for better layer caching.
+COPY server/package.json ./
+RUN npm install --omit=dev
+
+# Server source.
+COPY server/ ./
+
+# Bring the built SPA into the image; Express serves it when SERVE_STATIC=true.
+COPY --from=client-build /client/dist ./public
+
+ENV NODE_ENV=production \
+    SERVE_STATIC=true \
+    PUBLIC_DIR=/app/public \
+    PORT=3000
+
+EXPOSE 3000
+
+CMD ["node", "src/index.js"]

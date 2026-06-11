@@ -142,6 +142,63 @@ to that exact SHA, so rollbacks are just `az containerapp update --image
 secret for OIDC federated credentials and drop `creds` from the `azure/login`
 step.
 
+## Custom domain behind Cloudflare
+
+Front the app with your own domain and hide the Azure origin behind Cloudflare.
+[`custom-domain.sh`](./custom-domain.sh) automates the Azure side; the Cloudflare
+and Google steps are manual and the script pauses for them.
+
+**Approach:** bind the domain to the Container App with a **Cloudflare Origin
+certificate** (a 15-year cert — no Let's Encrypt renewal), then restrict ingress
+to **Cloudflare's IP ranges** so the `*.azurecontainerapps.io` URL can't be hit
+directly. The Origin cert matters: an Azure *managed* cert renews via inbound
+Let's Encrypt, which the IP lockdown would block — causing an outage in ~90 days.
+
+### One-time prep (Cloudflare dashboard)
+
+1. Add your domain to Cloudflare and delegate its nameservers (until the zone is
+   **Active**, nothing below works).
+2. **SSL/TLS → Origin Server → Create Certificate.** Save the two PEM blobs to
+   files — the **Origin Certificate** and the **Private Key**.
+
+### Run it
+
+```bash
+# In azure/.env.azure set:
+#   CUSTOM_DOMAIN=app.example.com
+#   ORIGIN_CERT_FILE=/path/to/origin-cert.pem
+#   ORIGIN_KEY_FILE=/path/to/origin-key.pem
+./azure/custom-domain.sh
+```
+
+The script walks three stages, pausing between them:
+
+1. **DNS validation** — prints the records to create in Cloudflare:
+   - `CNAME  <domain> → <app>.azurecontainerapps.io` — set **DNS only (grey
+     cloud)** so Azure can validate the CNAME.
+   - `TXT    asuid.<domain> → <verification-id>` — proves ownership.
+2. **Bind** — packages the Origin cert as PFX, uploads it to the Container Apps
+   environment, binds the hostname, and sets `APP_URL=https://<domain>`. Then it
+   asks you to flip the CNAME to **Proxied (orange cloud)** and set Cloudflare
+   **SSL/TLS mode to "Full (strict)"**.
+3. **Lock down** — fetches Cloudflare's current IP ranges and applies them as an
+   ingress allow-list; everything else is denied.
+
+### Finally — Google OAuth
+
+Add `https://<domain>/auth/google/callback` as an Authorized redirect URI at
+https://console.cloud.google.com/apis/credentials . Sign-in now works on the
+custom domain.
+
+### If the IP allow-list doesn't fit
+
+Container Apps caps the number of ingress IP rules, and Cloudflare publishes
+~22 ranges. If some are rejected, the origin URL stays partly reachable. The
+sturdier alternative is a **Cloudflare Tunnel**: run `cloudflared` as a second
+container in the same Container App (it dials *out* to Cloudflare, so the app
+needs no public ingress at all) and set the Container App ingress to `internal`.
+That keeps the app container itself unchanged. Ask if you want this wired up.
+
 ## Notes & production hardening
 
 - **Networking:** the Postgres firewall is opened to *Azure services* for

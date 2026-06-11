@@ -98,7 +98,24 @@ az postgres flexible-server firewall-rule create \
 
 PG_FQDN="$(az postgres flexible-server show -g "$RESOURCE_GROUP" -n "$PG_SERVER_NAME" \
   --query fullyQualifiedDomainName -o tsv)"
-DATABASE_URL="postgres://${PG_ADMIN_USER}:${PG_ADMIN_PASSWORD}@${PG_FQDN}:5432/${PG_DB_NAME}"
+
+# Percent-encode the credentials so special characters (e.g. / + = from a
+# base64 password) don't corrupt the DATABASE_URL and make pg throw
+# "Invalid URL". Only unreserved chars pass through untouched.
+urlencode() {
+  local s="$1" out="" i c
+  for (( i = 0; i < ${#s}; i++ )); do
+    c="${s:i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out+="$c" ;;
+      *) out+="$(printf '%%%02X' "'$c")" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+PG_USER_ENC="$(urlencode "$PG_ADMIN_USER")"
+PG_PASS_ENC="$(urlencode "$PG_ADMIN_PASSWORD")"
+DATABASE_URL="postgres://${PG_USER_ENC}:${PG_PASS_ENC}@${PG_FQDN}:5432/${PG_DB_NAME}"
 
 # ── Container Apps environment ────────────────────────────────
 echo "==> Container Apps environment: $CONTAINERAPP_ENV"

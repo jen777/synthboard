@@ -77,9 +77,16 @@ if ! az postgres flexible-server show -g "$RESOURCE_GROUP" -n "$PG_SERVER_NAME" 
     --admin-user "$PG_ADMIN_USER" --admin-password "$PG_ADMIN_PASSWORD" \
     --sku-name "${PG_SKU:-Standard_B1ms}" --tier "${PG_TIER:-Burstable}" \
     --storage-size "${PG_STORAGE_GB:-32}" --version "${PG_VERSION:-16}" \
-    --database-name "$PG_DB_NAME" \
     --public-access None --yes --only-show-errors 1>/dev/null
 fi
+
+# Create the application database as a separate step. Newer az CLI / postgres
+# extension versions reject --database-name on `flexible-server create` for a
+# standard (non-Elastic) server. Idempotent — ignore "already exists".
+echo "==> Database: $PG_DB_NAME"
+az postgres flexible-server db create \
+  -g "$RESOURCE_GROUP" -s "$PG_SERVER_NAME" -d "$PG_DB_NAME" \
+  --only-show-errors 1>/dev/null 2>&1 || true
 
 echo "==> Allowing Azure services (incl. Container Apps) to reach Postgres"
 # 0.0.0.0/0.0.0.0 is the special "allow Azure services" firewall rule. For

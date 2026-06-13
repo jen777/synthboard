@@ -18,7 +18,7 @@ router.use(requireAuth);
 router.get("/", async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT id, title, preset, created_at
+      `SELECT id, title, preset, status, created_at
          FROM visualizations
         WHERE user_id = $1
         ORDER BY created_at DESC`,
@@ -30,11 +30,13 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-// Fetch a single visualization including its draw.io XML.
+// Fetch a single visualization including its draw.io XML. The client polls this
+// endpoint after creating a visualization to watch `status` transition from
+// 'pending'/'processing' to 'completed' or 'failed'.
 router.get("/:id", async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT id, title, preset, source_text, drawio_xml, created_at
+      `SELECT id, title, preset, source_text, drawio_xml, status, error, created_at
          FROM visualizations
         WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user.id],
@@ -73,7 +75,50 @@ router.put("/:id", async (req, res, next) => {
   }
 });
 
-// Generate a new visualization, enforcing the per-account quota atomically.
+// Generate the diagram in the background and update the row in place. Runs
+// detached from the HTTP request that created the row, so a slow model can't
+// hold a connection open long enough to trip the proxy/Cloudflare 524 timeout.
+async function runGeneration(vizId, userId, { preset, sourceText, title }) {
+  const startedAt = Date.now();
+  try {
+    await query("UPDATE visualizations SET status = 'processing' WHERE id = $1", [
+      vizId,
+    ]);
+
+    const { xml } = await generateDrawio({ preset, sourceText, title });
+
+    await query(
+      `UPDATE visualizations
+          SET drawio_xml = $1, status = 'completed', error = NULL
+        WHERE id = $2`,
+      [xml, vizId],
+    );
+
+    console.log("[viz] generate done", {
+      userId,
+      vizId,
+      totalMs: Date.now() - startedAt,
+    });
+  } catch (err) {
+    console.error("[viz] generate failed", {
+      userId,
+      vizId,
+      preset,
+      totalMs: Date.now() - startedAt,
+      message: err?.message,
+    });
+    await query(
+      "UPDATE visualizations SET status = 'failed', error = $1 WHERE id = $2",
+      [err?.message || "Generation failed", vizId],
+    ).catch((e) =>
+      console.error("[viz] could not record failure", { vizId, message: e?.message }),
+    );
+  }
+}
+
+// Start a new visualization, enforcing the per-account quota atomically. The
+// row is created in 'pending' state and returned right away (202); generation
+// proceeds in the background and the client polls GET /:id for the result.
 router.post("/", async (req, res, next) => {
   const { sourceText, preset, title } = req.body || {};
 
@@ -88,16 +133,23 @@ router.post("/", async (req, res, next) => {
   }
 
   const limit = getSetting("max_visualizations_per_account");
-  const reqStart = Date.now();
   console.log("[viz] generate request", {
     userId: req.user.id,
     preset,
     sourceChars: sourceText.length,
   });
 
+  const finalTitle =
+    (title && String(title).trim()) ||
+    sourceText.trim().split(/\s+/).slice(0, 6).join(" ") ||
+    "Untitled";
+
   // Quota check inside a transaction with a row lock on the user, so two
-  // concurrent requests can't both slip past the limit.
+  // concurrent requests can't both slip past the limit. Failed attempts don't
+  // count against the quota, so a transient error doesn't burn a slot.
   const dbClient = await pool.connect();
+  let viz;
+  let used;
   try {
     await dbClient.query("BEGIN");
     await dbClient.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [
@@ -105,7 +157,7 @@ router.post("/", async (req, res, next) => {
     ]);
 
     const { rows: countRows } = await dbClient.query(
-      "SELECT COUNT(*)::int AS count FROM visualizations WHERE user_id = $1",
+      "SELECT COUNT(*)::int AS count FROM visualizations WHERE user_id = $1 AND status <> 'failed'",
       [req.user.id],
     );
     if (countRows[0].count >= limit) {
@@ -116,51 +168,35 @@ router.post("/", async (req, res, next) => {
       });
     }
 
-    // Generate the diagram. This can take a while; the row lock is held only
-    // for this request's user row, which is acceptable for a per-user quota.
-    const finalTitle =
-      (title && String(title).trim()) ||
-      sourceText.trim().split(/\s+/).slice(0, 6).join(" ") ||
-      "Untitled";
-
-    const { xml } = await generateDrawio({
-      preset,
-      sourceText,
-      title: finalTitle,
-    });
-
     const { rows } = await dbClient.query(
-      `INSERT INTO visualizations (user_id, title, preset, source_text, drawio_xml)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, title, preset, created_at`,
-      [req.user.id, finalTitle, preset, sourceText, xml],
+      `INSERT INTO visualizations (user_id, title, preset, source_text, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING id, title, preset, status, created_at`,
+      [req.user.id, finalTitle, preset, sourceText],
     );
 
     await dbClient.query("COMMIT");
-
-    console.log("[viz] generate done", {
-      userId: req.user.id,
-      vizId: rows[0].id,
-      totalMs: Date.now() - reqStart,
-    });
-
-    const used = countRows[0].count + 1;
-    res.status(201).json({
-      visualization: { ...rows[0], drawio_xml: xml },
-      quota: { used, limit, remaining: Math.max(0, limit - used) },
-    });
+    viz = rows[0];
+    used = countRows[0].count + 1;
   } catch (err) {
     await dbClient.query("ROLLBACK").catch(() => {});
-    console.error("[viz] generate failed", {
+    console.error("[viz] create failed", {
       userId: req.user?.id,
       preset,
-      totalMs: Date.now() - reqStart,
       message: err?.message,
     });
-    next(err);
+    return next(err);
   } finally {
     dbClient.release();
   }
+
+  // Kick off generation without awaiting it, then respond immediately.
+  runGeneration(viz.id, req.user.id, { preset, sourceText, title: finalTitle });
+
+  res.status(202).json({
+    visualization: viz,
+    quota: { used, limit, remaining: Math.max(0, limit - used) },
+  });
 });
 
 export default router;

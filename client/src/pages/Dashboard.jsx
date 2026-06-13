@@ -55,7 +55,15 @@ export default function Dashboard() {
                   <span className="pill">{v.preset}</span>
                 </div>
                 <small className="muted">
-                  {new Date(v.created_at).toLocaleString()}
+                  {v.status === "failed" ? (
+                    <span style={{ color: "var(--danger)" }}>Generation failed</span>
+                  ) : v.status && v.status !== "completed" ? (
+                    <span className="row" style={{ gap: 6 }}>
+                      <span className="spinner" /> Generating…
+                    </span>
+                  ) : (
+                    new Date(v.created_at).toLocaleString()
+                  )}
                 </small>
               </div>
             </Link>

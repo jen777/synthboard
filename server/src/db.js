@@ -36,9 +36,20 @@ CREATE TABLE IF NOT EXISTS visualizations (
   title       TEXT NOT NULL,
   preset      TEXT NOT NULL,
   source_text TEXT NOT NULL,
-  drawio_xml  TEXT NOT NULL,
+  -- Null until generation finishes. Generation runs in the background so the
+  -- HTTP request can return immediately (avoids the proxy/Cloudflare 524).
+  drawio_xml  TEXT,
+  -- Lifecycle: 'pending' → 'processing' → 'completed' | 'failed'.
+  status      TEXT NOT NULL DEFAULT 'completed',
+  error       TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Backfill for databases created before async generation existed. Existing
+-- rows already hold finished XML, so they default to 'completed'.
+ALTER TABLE visualizations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
+ALTER TABLE visualizations ADD COLUMN IF NOT EXISTS error TEXT;
+ALTER TABLE visualizations ALTER COLUMN drawio_xml DROP NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_visualizations_user
   ON visualizations(user_id, created_at DESC);

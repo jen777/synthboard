@@ -13,11 +13,34 @@ export default function Viewer() {
   const latestXml = useRef(null);
   const saveTimer = useRef(null);
 
+  // Load the visualization, and if it's still generating keep polling until it
+  // reaches a terminal state. (Normally Create finishes polling before it
+  // navigates here, but a direct link or refresh can land on a pending row.)
   useEffect(() => {
-    api
-      .get(id)
-      .then((d) => setViz(d.visualization))
-      .catch((err) => setError(err.message));
+    let cancelled = false;
+    let timer;
+
+    async function load() {
+      try {
+        const { visualization } = await api.get(id);
+        if (cancelled) return;
+        setViz(visualization);
+        if (
+          visualization.status === "pending" ||
+          visualization.status === "processing"
+        ) {
+          timer = setTimeout(load, 2000);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [id]);
 
   // Clean up any pending save timer on unmount.
@@ -64,6 +87,39 @@ export default function Viewer() {
     return (
       <div className="container">
         <span className="spinner" />
+      </div>
+    );
+  }
+
+  // Generation failed: show the error instead of an empty editor.
+  if (viz.status === "failed") {
+    return (
+      <div className="container stack">
+        <Link to="/" className="muted">
+          ← All visualizations
+        </Link>
+        <div className="banner error">
+          {viz.error || "Generation failed. Please try creating it again."}
+        </div>
+      </div>
+    );
+  }
+
+  // Still generating in the background — keep showing progress until it's ready.
+  if (viz.status !== "completed" || !viz.drawio_xml) {
+    return (
+      <div className="container stack">
+        <Link to="/" className="muted">
+          ← All visualizations
+        </Link>
+        <h2 style={{ margin: "6px 0 0" }}>{viz.title}</h2>
+        <div className="row">
+          <span className="spinner" />
+          <span className="muted">
+            Generating your diagram… This can take up to a minute for complex
+            inputs.
+          </span>
+        </div>
       </div>
     );
   }

@@ -3,6 +3,25 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Poll a visualization until generation finishes. Resolves with the completed
+// row, throws on failure or if it takes implausibly long.
+async function pollUntilDone(id, { intervalMs = 2000, timeoutMs = 360_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const { visualization } = await api.get(id);
+    if (visualization.status === "completed") return visualization;
+    if (visualization.status === "failed") {
+      throw new Error(visualization.error || "Generation failed. Please try again.");
+    }
+    await sleep(intervalMs);
+  }
+  throw new Error(
+    "This is taking longer than expected. It may still finish — check your dashboard in a moment.",
+  );
+}
+
 export default function Create() {
   const { quota, setQuota, refresh } = useAuth();
   const navigate = useNavigate();
@@ -26,10 +45,14 @@ export default function Create() {
     setError(null);
     setSubmitting(true);
     try {
+      // Generation now runs in the background: create() returns as soon as the
+      // pending row exists, then we poll for the final status. This keeps every
+      // request short so a slow model can't trip the proxy/Cloudflare 524.
       const data = await api.create({ sourceText, preset, title });
       if (data.quota) setQuota(data.quota);
+      const viz = await pollUntilDone(data.visualization.id);
       await refresh();
-      navigate(`/v/${data.visualization.id}`);
+      navigate(`/v/${viz.id}`);
     } catch (err) {
       setError(err.message);
       if (err.data?.quota) setQuota(err.data.quota);

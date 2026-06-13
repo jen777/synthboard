@@ -96,7 +96,10 @@ rm -f "$PFX_FILE"
 echo "==> Adding + binding hostname $DOMAIN (validation via CNAME)"
 az containerapp hostname add -g "$RG" -n "$APP" --hostname "$DOMAIN" \
   --only-show-errors 1>/dev/null 2>&1 || true
+# --environment is required so the CLI can resolve the uploaded certificate by
+# name within the Container Apps environment.
 az containerapp hostname bind -g "$RG" -n "$APP" --hostname "$DOMAIN" \
+  --environment "$ENVNAME" \
   --certificate "$CERT_NAME" --validation-method CNAME --only-show-errors 1>/dev/null
 
 echo "==> Pointing APP_URL at https://$DOMAIN (OAuth callback + secure cookies)"

@@ -5,10 +5,10 @@ import { useAuth } from "../App.jsx";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Cap on source characters fed to the model. Anything beyond this is truncated
-// server-side before the prompt is built, keeping input token usage bounded.
-// Kept in sync with MAX_SOURCE_CHARS on the server (services/llm.js).
-const MAX_SOURCE_CHARS = 7000;
+// Fallback source-char cap used until the live value loads from the server. The
+// authoritative limit is the admin-editable `max_source_chars` setting, returned
+// by the presets endpoint; source text beyond it is truncated server-side.
+const DEFAULT_MAX_SOURCE_CHARS = 7000;
 
 // Poll a visualization until generation finishes. Resolves with the completed
 // row, throws on failure or if it takes implausibly long.
@@ -32,6 +32,7 @@ export default function Create() {
   const navigate = useNavigate();
 
   const [presets, setPresets] = useState([]);
+  const [maxSourceChars, setMaxSourceChars] = useState(DEFAULT_MAX_SOURCE_CHARS);
   const [preset, setPreset] = useState("diagram");
   const [title, setTitle] = useState("");
   const [sourceText, setSourceText] = useState("");
@@ -41,6 +42,7 @@ export default function Create() {
   useEffect(() => {
     api.presets().then((d) => {
       setPresets(d.presets);
+      if (d.maxSourceChars) setMaxSourceChars(d.maxSourceChars);
       if (d.presets[0]) setPreset(d.presets[0].key);
     });
   }, []);
@@ -67,7 +69,7 @@ export default function Create() {
   }
 
   const atLimit = quota && quota.remaining <= 0;
-  const overCharLimit = sourceText.length > MAX_SOURCE_CHARS;
+  const overCharLimit = sourceText.length > maxSourceChars;
 
   return (
     <div className="container">
@@ -128,13 +130,13 @@ export default function Create() {
               className={overCharLimit ? undefined : "muted"}
             >
               {sourceText.length.toLocaleString()} /{" "}
-              {MAX_SOURCE_CHARS.toLocaleString()} characters
+              {maxSourceChars.toLocaleString()} characters
             </small>
           </div>
           {overCharLimit && (
             <small style={{ color: "var(--danger)" }}>
-              Over the {MAX_SOURCE_CHARS.toLocaleString()} character limit — only
-              the first {MAX_SOURCE_CHARS.toLocaleString()} characters will be
+              Over the {maxSourceChars.toLocaleString()} character limit — only
+              the first {maxSourceChars.toLocaleString()} characters will be
               sent to the model; the rest will be truncated.
             </small>
           )}

@@ -40,6 +40,10 @@ export const config = {
     baseUrl: process.env.LLM_BASE_URL || "https://integrate.api.nvidia.com/v1",
     model: process.env.LLM_MODEL || "minimaxai/minimax-m2.7",
     maxTokens: parseInt(process.env.LLM_MAX_TOKENS || "8192", 10),
+    // Fallback cap on source characters fed to the model; the live value is the
+    // admin-editable `max_source_chars` setting. Source text beyond this is
+    // truncated so input token usage stays bounded.
+    maxSourceChars: parseInt(process.env.MAX_SOURCE_CHARS || "7000", 10),
     // Abort an upstream call that runs longer than this so we log a clear
     // timeout instead of hanging until the reverse proxy returns a 504. Keep it
     // just under the proxy read timeout (nginx is 300s here).

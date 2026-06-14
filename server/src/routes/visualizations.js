@@ -7,9 +7,10 @@ import { isValidPreset, listPresets } from "../services/presets.js";
 
 const router = Router();
 
-// Public: available presets (used to render the create form).
+// Public: available presets and the source-text limit (used to render the
+// create form, including its live character counter).
 router.get("/presets", (req, res) => {
-  res.json({ presets: listPresets() });
+  res.json({ presets: listPresets(), maxSourceChars: getSetting("max_source_chars") });
 });
 
 router.use(requireAuth);

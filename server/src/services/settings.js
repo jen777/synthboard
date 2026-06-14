@@ -65,6 +65,16 @@ export const SETTINGS_SCHEMA = {
     label: "Visualizations per account",
     help: "Maximum diagrams a single account may generate.",
   },
+  max_source_chars: {
+    type: "int",
+    env: "MAX_SOURCE_CHARS",
+    default: 7000,
+    min: 100,
+    max: 100000,
+    group: "limits",
+    label: "Source text characters",
+    help: "Max source characters sent to the model. Longer input is truncated to keep input token usage bounded.",
+  },
 };
 
 const cache = new Map();

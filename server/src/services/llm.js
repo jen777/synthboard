@@ -3,6 +3,12 @@ import { config } from "../config.js";
 import { getSetting } from "./settings.js";
 import { PRESETS } from "./presets.js";
 
+// Hard cap on source characters fed to the model. Anything beyond this is
+// truncated before the prompt is built, so input token usage stays bounded and
+// predictable regardless of how large a payload the client sends. Mirrored on
+// the client (client/src/pages/Create.jsx) so users are warned before submit.
+export const MAX_SOURCE_CHARS = 7000;
+
 // Tagged logger so generation logs are easy to grep in production.
 function log(msg, extra) {
   if (extra !== undefined) {
@@ -96,12 +102,26 @@ function extractDrawioXml(text) {
 export async function generateDrawio({ preset, sourceText, title }) {
   const presetDef = PRESETS[preset];
 
+  // Truncate to the character cap so we never overspend input tokens on an
+  // oversized payload. The UI warns about this, but enforce it here too since
+  // the API can be called directly.
+  const trimmedSource =
+    sourceText.length > MAX_SOURCE_CHARS
+      ? sourceText.slice(0, MAX_SOURCE_CHARS)
+      : sourceText;
+  if (trimmedSource.length < sourceText.length) {
+    log("source truncated", {
+      originalChars: sourceText.length,
+      truncatedChars: trimmedSource.length,
+    });
+  }
+
   const userPrompt = `Diagram type: ${presetDef.label}
 ${presetDef.guidance}
 
 ${title ? `Suggested title: ${title}\n` : ""}Source material to visualize:
 """
-${sourceText}
+${trimmedSource}
 """
 
 Return only the draw.io <mxfile> XML.`;
@@ -114,7 +134,7 @@ Return only the draw.io <mxfile> XML.`;
     preset,
     maxTokens,
     promptChars: userPrompt.length,
-    sourceChars: sourceText.length,
+    sourceChars: trimmedSource.length,
   });
 
   const startedAt = Date.now();

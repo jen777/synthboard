@@ -5,6 +5,11 @@ import { useAuth } from "../App.jsx";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Cap on source characters fed to the model. Anything beyond this is truncated
+// server-side before the prompt is built, keeping input token usage bounded.
+// Kept in sync with MAX_SOURCE_CHARS on the server (services/llm.js).
+const MAX_SOURCE_CHARS = 7000;
+
 // Poll a visualization until generation finishes. Resolves with the completed
 // row, throws on failure or if it takes implausibly long.
 async function pollUntilDone(id, { intervalMs = 2000, timeoutMs = 360_000 } = {}) {
@@ -62,6 +67,7 @@ export default function Create() {
   }
 
   const atLimit = quota && quota.remaining <= 0;
+  const overCharLimit = sourceText.length > MAX_SOURCE_CHARS;
 
   return (
     <div className="container">
@@ -113,6 +119,25 @@ export default function Create() {
             disabled={submitting}
             required
           />
+          <div
+            className="row"
+            style={{ justifyContent: "space-between", marginTop: 4 }}
+          >
+            <small
+              style={overCharLimit ? { color: "var(--danger)" } : undefined}
+              className={overCharLimit ? undefined : "muted"}
+            >
+              {sourceText.length.toLocaleString()} /{" "}
+              {MAX_SOURCE_CHARS.toLocaleString()} characters
+            </small>
+          </div>
+          {overCharLimit && (
+            <small style={{ color: "var(--danger)" }}>
+              Over the {MAX_SOURCE_CHARS.toLocaleString()} character limit — only
+              the first {MAX_SOURCE_CHARS.toLocaleString()} characters will be
+              sent to the model; the rest will be truncated.
+            </small>
+          )}
         </div>
 
         <div className="row">

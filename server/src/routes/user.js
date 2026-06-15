@@ -27,6 +27,8 @@ router.get("/me", async (req, res) => {
       isAdmin: !!req.user.is_admin,
       level: level.level,
       levelName: level.name,
+      // Per-level cap on source characters; drives the create form's counter.
+      maxSourceChars: level.maxChars,
     },
     quota: { used, limit, remaining: Math.max(0, limit - used) },
   });

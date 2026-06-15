@@ -93,17 +93,16 @@ function extractDrawioXml(text) {
  * Generate draw.io XML from source text for a given preset.
  * @returns {Promise<{ xml: string, usage: object }>}
  */
-export async function generateDrawio({ preset, sourceText, title }) {
+export async function generateDrawio({ preset, sourceText, title, maxSourceChars }) {
   const presetDef = PRESETS[preset];
 
-  // Truncate to the admin-configured character cap so we never overspend input
+  // Truncate to the caller's per-level character cap so we never overspend input
   // tokens on an oversized payload. The UI warns about this, but enforce it here
-  // too since the API can be called directly.
-  const maxSourceChars = getSetting("max_source_chars") || config.llm.maxSourceChars;
+  // too since the API can be called directly. Falls back to the env default when
+  // no cap is passed.
+  const cap = maxSourceChars || config.llm.maxSourceChars;
   const trimmedSource =
-    sourceText.length > maxSourceChars
-      ? sourceText.slice(0, maxSourceChars)
-      : sourceText;
+    sourceText.length > cap ? sourceText.slice(0, cap) : sourceText;
   if (trimmedSource.length < sourceText.length) {
     log("source truncated", {
       originalChars: sourceText.length,

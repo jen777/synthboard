@@ -6,8 +6,9 @@ import { useAuth } from "../App.jsx";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Fallback source-char cap used until the live value loads from the server. The
-// authoritative limit is the admin-editable `max_source_chars` setting, returned
-// by the presets endpoint; source text beyond it is truncated server-side.
+// authoritative limit is the signed-in user's level cap (admin-editable
+// `level_N_chars` setting), returned by /me; source text beyond it is truncated
+// server-side.
 const DEFAULT_MAX_SOURCE_CHARS = 7000;
 
 // Poll a visualization until generation finishes. Resolves with the completed
@@ -28,11 +29,14 @@ async function pollUntilDone(id, { intervalMs = 2000, timeoutMs = 360_000 } = {}
 }
 
 export default function Create() {
-  const { quota, setQuota, refresh } = useAuth();
+  const { user, quota, setQuota, refresh } = useAuth();
   const navigate = useNavigate();
 
   const [presets, setPresets] = useState([]);
-  const [maxSourceChars, setMaxSourceChars] = useState(DEFAULT_MAX_SOURCE_CHARS);
+  const [presetMaxChars, setPresetMaxChars] = useState(DEFAULT_MAX_SOURCE_CHARS);
+  // The signed-in user's level cap is authoritative (it's what the server
+  // enforces); fall back to the presets endpoint value until /me has loaded.
+  const maxSourceChars = user?.maxSourceChars || presetMaxChars;
   const [preset, setPreset] = useState("diagram");
   const [title, setTitle] = useState("");
   const [sourceText, setSourceText] = useState("");
@@ -42,7 +46,7 @@ export default function Create() {
   useEffect(() => {
     api.presets().then((d) => {
       setPresets(d.presets);
-      if (d.maxSourceChars) setMaxSourceChars(d.maxSourceChars);
+      if (d.maxSourceChars) setPresetMaxChars(d.maxSourceChars);
       if (d.presets[0]) setPreset(d.presets[0].key);
     });
   }, []);
@@ -76,7 +80,16 @@ export default function Create() {
       <h2>New visualization</h2>
       {quota && (
         <p className="muted">
-          {quota.remaining} of {quota.limit} visualizations remaining.
+          {user?.levelName && (
+            <>
+              <b>
+                Level {user.level} · {user.levelName}
+              </b>{" "}
+              —{" "}
+            </>
+          )}
+          {quota.remaining} of {quota.limit} visualizations remaining
+          {" · "}up to {maxSourceChars.toLocaleString()} input characters.
         </p>
       )}
       {error && <div className="banner error">{error}</div>}

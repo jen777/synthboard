@@ -7,24 +7,32 @@
 import { query } from "../db.js";
 import { LEVELS, levelByNumber } from "./levels.js";
 
-// One editable limit per account level, generated from the shared LEVELS table
-// so the tier names stay defined in a single place. Group "levels" renders these
-// together in the admin Settings screen.
-const levelSettings = Object.fromEntries(
-  LEVELS.map((l) => [
-    l.settingKey,
-    {
-      type: "int",
-      env: l.env,
-      default: l.defaultLimit,
-      min: 0,
-      max: 100000,
-      group: "levels",
-      label: `Level ${l.level} — ${l.name}`,
-      help: `Visualizations a Level ${l.level} (${l.name}) account may generate.`,
-    },
-  ]),
-);
+// Two editable limits per account level — visualization quota and input-text
+// size — generated from the shared LEVELS table so the tier names stay defined
+// in a single place. Group "levels" renders these together in admin Settings.
+const levelSettings = {};
+for (const l of LEVELS) {
+  levelSettings[l.settingKey] = {
+    type: "int",
+    env: l.env,
+    default: l.defaultLimit,
+    min: 0,
+    max: 100000,
+    group: "levels",
+    label: `Level ${l.level} — ${l.name} · visualizations`,
+    help: `Visualizations a Level ${l.level} (${l.name}) account may generate.`,
+  };
+  levelSettings[l.charsKey] = {
+    type: "int",
+    env: l.charsEnv,
+    default: l.defaultChars,
+    min: 100,
+    max: 100000,
+    group: "levels",
+    label: `Level ${l.level} — ${l.name} · input characters`,
+    help: `Max source characters a Level ${l.level} (${l.name}) account may send; longer input is truncated.`,
+  };
+}
 
 // Schema for every editable setting: type, env-var default source, fallback,
 // and (for numbers) a sane range. `label`/`group` drive the admin UI.
@@ -74,16 +82,6 @@ export const SETTINGS_SCHEMA = {
     group: "model",
     label: "Top P",
     help: "Nucleus sampling probability (0–1).",
-  },
-  max_source_chars: {
-    type: "int",
-    env: "MAX_SOURCE_CHARS",
-    default: 7000,
-    min: 100,
-    max: 100000,
-    group: "limits",
-    label: "Source text characters",
-    help: "Max source characters sent to the model. Longer input is truncated to keep input token usage bounded.",
   },
   ...levelSettings,
 };
@@ -151,7 +149,12 @@ export function getSetting(key) {
 // The limit comes from the editable `level_N_limit` setting; the name is fixed.
 export function resolveLevel(level) {
   const def = levelByNumber(level);
-  return { level: def.level, name: def.name, limit: getSetting(def.settingKey) };
+  return {
+    level: def.level,
+    name: def.name,
+    limit: getSetting(def.settingKey),
+    maxChars: getSetting(def.charsKey),
+  };
 }
 
 export function getAllSettings() {

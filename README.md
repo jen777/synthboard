@@ -6,9 +6,10 @@ powered by an LLM (NVIDIA-hosted `minimaxai/minimax-m2.7` via the
 OpenAI-compatible API).
 
 - **Google sign-in** (OAuth 2.0)
-- **Tiered account levels** — Sketcher (5), Creator (20), Architect (50),
-  Visionary (150); new users start as Sketcher. Per-level limits and each
-  user's level are editable from the admin panel.
+- **Tiered account levels** — Sketcher (5 visualizations / 7k input chars),
+  Creator (20 / 8.5k), Architect (50 / 10k), Visionary (150 / 15k); new users
+  start as Sketcher. Each level's visualization quota and input-size limit, plus
+  a user's level, are editable from the admin panel.
 - **Embedded draw.io viewer** + one-click `.drawio` export
 - **Node.js + Express + Postgres + React**, fully Dockerized
 

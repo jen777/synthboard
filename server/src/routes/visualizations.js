@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { query, pool } from "../db.js";
-import { getSetting, resolveLevel } from "../services/settings.js";
+import { resolveLevel } from "../services/settings.js";
 import { generateDrawio } from "../services/llm.js";
 import { isValidPreset, listPresets } from "../services/presets.js";
 
@@ -10,7 +10,9 @@ const router = Router();
 // Public: available presets and the source-text limit (used to render the
 // create form, including its live character counter).
 router.get("/presets", (req, res) => {
-  res.json({ presets: listPresets(), maxSourceChars: getSetting("max_source_chars") });
+  // Public route (no session): advertise the entry-tier input cap as a fallback.
+  // The create form refines this to the signed-in user's level cap (from /me).
+  res.json({ presets: listPresets(), maxSourceChars: resolveLevel(1).maxChars });
 });
 
 router.use(requireAuth);
@@ -79,14 +81,14 @@ router.put("/:id", async (req, res, next) => {
 // Generate the diagram in the background and update the row in place. Runs
 // detached from the HTTP request that created the row, so a slow model can't
 // hold a connection open long enough to trip the proxy/Cloudflare 524 timeout.
-async function runGeneration(vizId, userId, { preset, sourceText, title }) {
+async function runGeneration(vizId, userId, { preset, sourceText, title, maxSourceChars }) {
   const startedAt = Date.now();
   try {
     await query("UPDATE visualizations SET status = 'processing' WHERE id = $1", [
       vizId,
     ]);
 
-    const { xml } = await generateDrawio({ preset, sourceText, title });
+    const { xml } = await generateDrawio({ preset, sourceText, title, maxSourceChars });
 
     await query(
       `UPDATE visualizations
@@ -133,7 +135,7 @@ router.post("/", async (req, res, next) => {
     return res.status(413).json({ error: "Source text is too large (max 100k chars)" });
   }
 
-  const limit = resolveLevel(req.user.level).limit;
+  const { limit, maxChars } = resolveLevel(req.user.level);
   console.log("[viz] generate request", {
     userId: req.user.id,
     preset,
@@ -192,7 +194,12 @@ router.post("/", async (req, res, next) => {
   }
 
   // Kick off generation without awaiting it, then respond immediately.
-  runGeneration(viz.id, req.user.id, { preset, sourceText, title: finalTitle });
+  runGeneration(viz.id, req.user.id, {
+    preset,
+    sourceText,
+    title: finalTitle,
+    maxSourceChars: maxChars,
+  });
 
   res.status(202).json({
     visualization: viz,

@@ -14,13 +14,37 @@ export const LEVELS = [
     name: "Sketcher",
     settingKey: "level_1_limit",
     defaultLimit: 5,
-    // Back-compat: the old single-quota env still seeds Level 1 so existing
-    // deployments keep their configured value.
+    charsKey: "level_1_chars",
+    defaultChars: 7000,
+    // Back-compat: the old single-value envs still seed Level 1 so existing
+    // deployments keep their configured values.
     env: "MAX_VISUALIZATIONS_PER_ACCOUNT",
+    charsEnv: "MAX_SOURCE_CHARS",
   },
-  { level: 2, name: "Creator", settingKey: "level_2_limit", defaultLimit: 20 },
-  { level: 3, name: "Architect", settingKey: "level_3_limit", defaultLimit: 50 },
-  { level: 4, name: "Visionary", settingKey: "level_4_limit", defaultLimit: 150 },
+  {
+    level: 2,
+    name: "Creator",
+    settingKey: "level_2_limit",
+    defaultLimit: 20,
+    charsKey: "level_2_chars",
+    defaultChars: 8500,
+  },
+  {
+    level: 3,
+    name: "Architect",
+    settingKey: "level_3_limit",
+    defaultLimit: 50,
+    charsKey: "level_3_chars",
+    defaultChars: 10000,
+  },
+  {
+    level: 4,
+    name: "Visionary",
+    settingKey: "level_4_limit",
+    defaultLimit: 150,
+    charsKey: "level_4_chars",
+    defaultChars: 15000,
+  },
 ];
 
 export const DEFAULT_LEVEL = 1;

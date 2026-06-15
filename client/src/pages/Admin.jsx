@@ -244,7 +244,7 @@ function Users() {
                   >
                     {levels.map((l) => (
                       <option key={l.level} value={l.level}>
-                        L{l.level} · {l.name} ({l.limit})
+                        L{l.level} · {l.name} ({l.limit} viz / {l.maxChars} ch)
                       </option>
                     ))}
                   </select>

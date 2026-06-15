@@ -5,7 +5,9 @@ import {
   SETTINGS_SCHEMA,
   getAllSettings,
   updateSettings,
+  resolveLevel,
 } from "../services/settings.js";
+import { LEVELS, isValidLevel } from "../services/levels.js";
 
 const router = Router();
 
@@ -63,30 +65,43 @@ router.get("/stats", async (req, res, next) => {
 router.get("/users", async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT u.id, u.email, u.name, u.avatar_url, u.is_admin, u.created_at,
+      `SELECT u.id, u.email, u.name, u.avatar_url, u.is_admin, u.level, u.created_at,
               COUNT(v.id)::int AS viz_count
          FROM users u
          LEFT JOIN visualizations v ON v.user_id = u.id
         GROUP BY u.id
         ORDER BY u.created_at DESC`,
     );
-    res.json({ users: rows });
+    // Ship the level catalogue (name + current limit) alongside so the UI can
+    // render the tier selector without duplicating the names client-side.
+    const levels = LEVELS.map((l) => resolveLevel(l.level));
+    res.json({ users: rows, levels });
   } catch (err) {
     next(err);
   }
 });
 
-// Promote/demote a user.
+// Update a user's role and/or membership level. Either field is optional, so
+// the admin panel can change one without touching the other.
 router.patch("/users/:id", async (req, res, next) => {
-  const { isAdmin } = req.body || {};
-  if (typeof isAdmin !== "boolean") {
-    return res.status(400).json({ error: "isAdmin (boolean) is required" });
+  const { isAdmin, level } = req.body || {};
+
+  if (isAdmin !== undefined && typeof isAdmin !== "boolean") {
+    return res.status(400).json({ error: "isAdmin must be a boolean" });
+  }
+  if (level !== undefined && !isValidLevel(level)) {
+    return res
+      .status(400)
+      .json({ error: `level must be an integer between 1 and ${LEVELS.length}` });
+  }
+  if (isAdmin === undefined && level === undefined) {
+    return res.status(400).json({ error: "Nothing to update" });
   }
 
   const targetId = String(req.params.id);
   try {
     // Don't allow removing the last remaining admin.
-    if (!isAdmin) {
+    if (isAdmin === false) {
       const { rows } = await query(
         "SELECT COUNT(*)::int AS count FROM users WHERE is_admin",
       );
@@ -101,10 +116,14 @@ router.patch("/users/:id", async (req, res, next) => {
       }
     }
 
+    // Build a COALESCE-based update so omitted fields keep their current value.
     const { rows } = await query(
-      `UPDATE users SET is_admin = $1 WHERE id = $2
-       RETURNING id, email, name, is_admin`,
-      [isAdmin, targetId],
+      `UPDATE users
+          SET is_admin = COALESCE($1, is_admin),
+              level    = COALESCE($2, level)
+        WHERE id = $3
+       RETURNING id, email, name, is_admin, level`,
+      [isAdmin ?? null, level ?? null, targetId],
     );
     if (rows.length === 0) return res.status(404).json({ error: "Not found" });
     res.json({ user: rows[0] });

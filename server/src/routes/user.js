@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
-import { getSetting } from "../services/settings.js";
+import { resolveLevel } from "../services/settings.js";
 
 const router = Router();
 
@@ -15,7 +15,8 @@ router.get("/me", async (req, res) => {
     [req.user.id],
   );
   const used = rows[0].count;
-  const limit = getSetting("max_visualizations_per_account");
+  const level = resolveLevel(req.user.level);
+  const limit = level.limit;
 
   res.json({
     user: {
@@ -24,6 +25,8 @@ router.get("/me", async (req, res) => {
       name: req.user.name,
       avatarUrl: req.user.avatar_url,
       isAdmin: !!req.user.is_admin,
+      level: level.level,
+      levelName: level.name,
     },
     quota: { used, limit, remaining: Math.max(0, limit - used) },
   });

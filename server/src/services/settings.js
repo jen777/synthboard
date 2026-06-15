@@ -5,6 +5,26 @@
 // exactly like before the admin panel existed. The LLM service and quota checks
 // read from here instead of static config, so an admin can retune them live.
 import { query } from "../db.js";
+import { LEVELS, levelByNumber } from "./levels.js";
+
+// One editable limit per account level, generated from the shared LEVELS table
+// so the tier names stay defined in a single place. Group "levels" renders these
+// together in the admin Settings screen.
+const levelSettings = Object.fromEntries(
+  LEVELS.map((l) => [
+    l.settingKey,
+    {
+      type: "int",
+      env: l.env,
+      default: l.defaultLimit,
+      min: 0,
+      max: 100000,
+      group: "levels",
+      label: `Level ${l.level} — ${l.name}`,
+      help: `Visualizations a Level ${l.level} (${l.name}) account may generate.`,
+    },
+  ]),
+);
 
 // Schema for every editable setting: type, env-var default source, fallback,
 // and (for numbers) a sane range. `label`/`group` drive the admin UI.
@@ -55,16 +75,6 @@ export const SETTINGS_SCHEMA = {
     label: "Top P",
     help: "Nucleus sampling probability (0–1).",
   },
-  max_visualizations_per_account: {
-    type: "int",
-    env: "MAX_VISUALIZATIONS_PER_ACCOUNT",
-    default: 5,
-    min: 1,
-    max: 100000,
-    group: "limits",
-    label: "Visualizations per account",
-    help: "Maximum diagrams a single account may generate.",
-  },
   max_source_chars: {
     type: "int",
     env: "MAX_SOURCE_CHARS",
@@ -75,6 +85,7 @@ export const SETTINGS_SCHEMA = {
     label: "Source text characters",
     help: "Max source characters sent to the model. Longer input is truncated to keep input token usage bounded.",
   },
+  ...levelSettings,
 };
 
 const cache = new Map();
@@ -134,6 +145,13 @@ export async function initSettings() {
 
 export function getSetting(key) {
   return cache.get(key);
+}
+
+// Resolve an account level number to its display name and live quota limit.
+// The limit comes from the editable `level_N_limit` setting; the name is fixed.
+export function resolveLevel(level) {
+  const def = levelByNumber(level);
+  return { level: def.level, name: def.name, limit: getSetting(def.settingKey) };
 }
 
 export function getAllSettings() {

@@ -24,11 +24,16 @@ CREATE TABLE IF NOT EXISTS users (
   name        TEXT,
   avatar_url  TEXT,
   is_admin    BOOLEAN NOT NULL DEFAULT false,
+  -- Membership tier (1–4). New accounts start at Level 1; the per-level
+  -- visualization quota lives in app_settings (level_N_limit).
+  level       SMALLINT NOT NULL DEFAULT 1,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Backfill for databases created before is_admin existed.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+-- Backfill for databases created before account levels existed.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS level SMALLINT NOT NULL DEFAULT 1;
 
 CREATE TABLE IF NOT EXISTS visualizations (
   id          BIGSERIAL PRIMARY KEY,

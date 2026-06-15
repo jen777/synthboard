@@ -136,15 +136,19 @@ function Stat({ label, value }) {
 
 // ── Users ─────────────────────────────────────────────────────
 function Users() {
-  const { user: me } = useAuth();
+  const { user: me, refresh } = useAuth();
   const [users, setUsers] = useState(null);
+  const [levels, setLevels] = useState([]);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
 
   function load() {
     api.admin
       .users()
-      .then((d) => setUsers(d.users))
+      .then((d) => {
+        setUsers(d.users);
+        setLevels(d.levels || []);
+      })
       .catch((e) => setError(e.message));
   }
   useEffect(load, []);
@@ -155,6 +159,21 @@ function Users() {
     try {
       await api.admin.setUserAdmin(u.id, !u.is_admin);
       load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function changeLevel(u, level) {
+    setError(null);
+    setBusy(u.id);
+    try {
+      await api.admin.setUserLevel(u.id, level);
+      load();
+      // Reflect the change immediately in the top bar if I changed my own level.
+      if (String(u.id) === String(me.id)) refresh();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -192,6 +211,7 @@ function Users() {
           <tr>
             <th>User</th>
             <th>Role</th>
+            <th>Level</th>
             <th style={{ textAlign: "right" }}>Diagrams</th>
             <th>Joined</th>
             <th style={{ textAlign: "right" }}>Actions</th>
@@ -214,6 +234,20 @@ function Users() {
                   ) : (
                     <span className="pill">user</span>
                   )}
+                </td>
+                <td>
+                  <select
+                    value={u.level}
+                    disabled={busy === u.id || levels.length === 0}
+                    onChange={(e) => changeLevel(u, Number(e.target.value))}
+                    title="Membership level"
+                  >
+                    {levels.map((l) => (
+                      <option key={l.level} value={l.level}>
+                        L{l.level} · {l.name} ({l.limit})
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td style={{ textAlign: "right" }}>{u.viz_count}</td>
                 <td>{new Date(u.created_at).toLocaleDateString()}</td>
@@ -245,7 +279,11 @@ function Users() {
 }
 
 // ── Settings ──────────────────────────────────────────────────
-const GROUP_LABELS = { model: "Model & generation", limits: "Limits" };
+const GROUP_LABELS = {
+  model: "Model & generation",
+  limits: "Limits",
+  levels: "Account levels",
+};
 
 function Settings() {
   const [schema, setSchema] = useState(null);

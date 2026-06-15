@@ -6,7 +6,9 @@ powered by an LLM (NVIDIA-hosted `minimaxai/minimax-m2.7` via the
 OpenAI-compatible API).
 
 - **Google sign-in** (OAuth 2.0)
-- **5 visualizations per account** (configurable quota)
+- **Tiered account levels** — Sketcher (5), Creator (20), Architect (50),
+  Visionary (150); new users start as Sketcher. Per-level limits and each
+  user's level are editable from the admin panel.
 - **Embedded draw.io viewer** + one-click `.drawio` export
 - **Node.js + Express + Postgres + React**, fully Dockerized
 
@@ -61,7 +63,7 @@ Notable ones:
 | `APP_URL` | Public URL (drives OAuth callback + CORS). |
 | `LLM_MODEL` | Model for generation. Defaults to `minimaxai/minimax-m2.7`. |
 | `LLM_BASE_URL` | OpenAI-compatible endpoint. Defaults to NVIDIA's. |
-| `MAX_VISUALIZATIONS_PER_ACCOUNT` | Per-account quota. Defaults to `5`. |
+| `MAX_VISUALIZATIONS_PER_ACCOUNT` | Seeds the **Level 1 (Sketcher)** quota. Defaults to `5`. Higher tiers and live retuning are managed in the admin panel. |
 
 ## Local development (without Docker)
 
@@ -84,7 +86,7 @@ For local dev, set the Google redirect URI to
 
 ## Data model
 
-- `users` — Google account (`google_id`, email, name, avatar).
+- `users` — Google account (`google_id`, email, name, avatar, `is_admin`, `level`).
 - `visualizations` — `title`, `preset`, `source_text`, generated `drawio_xml`.
 - `session` — session store (managed by `connect-pg-simple`).
 

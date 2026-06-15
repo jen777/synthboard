@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { query, pool } from "../db.js";
-import { getSetting } from "../services/settings.js";
+import { getSetting, resolveLevel } from "../services/settings.js";
 import { generateDrawio } from "../services/llm.js";
 import { isValidPreset, listPresets } from "../services/presets.js";
 
@@ -133,7 +133,7 @@ router.post("/", async (req, res, next) => {
     return res.status(413).json({ error: "Source text is too large (max 100k chars)" });
   }
 
-  const limit = getSetting("max_visualizations_per_account");
+  const limit = resolveLevel(req.user.level).limit;
   console.log("[viz] generate request", {
     userId: req.user.id,
     preset,

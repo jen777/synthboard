@@ -40,6 +40,11 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ isAdmin }),
       }),
+    setUserLevel: (id, level) =>
+      request(`/api/admin/users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ level }),
+      }),
     deleteUser: (id) =>
       request(`/api/admin/users/${id}`, { method: "DELETE" }),
     settings: () => request("/api/admin/settings"),

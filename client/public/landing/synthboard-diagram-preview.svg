@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720" role="img" aria-labelledby="title desc">
+  <title id="title">SynthBoard diagram preview</title>
+  <desc id="desc">Source notes being transformed into an editable draw.io workflow diagram.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7fbff"/>
+      <stop offset="0.55" stop-color="#eef5ff"/>
+      <stop offset="1" stop-color="#f8f2ff"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14b8a6"/>
+      <stop offset="1" stop-color="#6d5efc"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#26324d" flood-opacity="0.16"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect width="960" height="720" rx="38" fill="url(#bg)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="64" y="70" width="832" height="580" rx="28" fill="#ffffff"/>
+    <rect x="64" y="70" width="832" height="58" rx="28" fill="#111827"/>
+    <circle cx="103" cy="99" r="7" fill="#f87171"/>
+    <circle cx="127" cy="99" r="7" fill="#fbbf24"/>
+    <circle cx="151" cy="99" r="7" fill="#34d399"/>
+    <rect x="195" y="91" width="190" height="16" rx="8" fill="#334155"/>
+  </g>
+
+  <g>
+    <rect x="96" y="158" width="286" height="452" rx="22" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="124" y="200" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700">Source text</text>
+    <rect x="124" y="226" width="88" height="24" rx="12" fill="#dff7f2"/>
+    <text x="140" y="243" fill="#0f766e" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700">Transcript</text>
+    <rect x="124" y="278" width="210" height="10" rx="5" fill="#cbd5e1"/>
+    <rect x="124" y="304" width="228" height="10" rx="5" fill="#cbd5e1"/>
+    <rect x="124" y="330" width="174" height="10" rx="5" fill="#cbd5e1"/>
+    <rect x="124" y="384" width="232" height="92" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="148" y="421" fill="#334155" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700">Extracted structure</text>
+    <rect x="148" y="444" width="158" height="8" rx="4" fill="#94a3b8"/>
+    <rect x="148" y="462" width="122" height="8" rx="4" fill="#94a3b8"/>
+    <rect x="124" y="526" width="202" height="44" rx="22" fill="url(#accent)"/>
+    <text x="162" y="554" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="800">Generate diagram</text>
+  </g>
+
+  <g>
+    <path d="M410 382 C455 382 455 382 500 382" stroke="#64748b" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+    <rect x="448" y="344" width="64" height="64" rx="32" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <path d="M466 381 h20 m-10 -10 v20" stroke="#6d5efc" stroke-width="5" stroke-linecap="round"/>
+  </g>
+
+  <g>
+    <rect x="532" y="158" width="330" height="452" rx="22" fill="#ffffff" stroke="#dbeafe"/>
+    <text x="560" y="200" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700">Editable draw.io</text>
+    <rect x="560" y="224" width="152" height="26" rx="13" fill="#eef2ff"/>
+    <text x="579" y="242" fill="#4f46e5" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="800">Workflow diagram</text>
+
+    <rect x="624" y="286" width="146" height="54" rx="16" fill="#ecfeff" stroke="#67e8f9" stroke-width="2"/>
+    <text x="661" y="319" fill="#155e75" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="800">Kickoff</text>
+
+    <path d="M697 340 L697 378" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M697 382 L770 424 L697 466 L624 424 Z" fill="#fff7ed" stroke="#fdba74" stroke-width="2"/>
+    <text x="663" y="429" fill="#9a3412" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800">Approved?</text>
+
+    <path d="M624 424 H574 V514 H624" stroke="#64748b" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+    <path d="M770 424 H820 V514 H770" stroke="#64748b" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+
+    <rect x="548" y="514" width="146" height="54" rx="16" fill="#f0fdf4" stroke="#86efac" stroke-width="2"/>
+    <text x="588" y="547" fill="#166534" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="800">Revise</text>
+
+    <rect x="700" y="514" width="146" height="54" rx="16" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="2"/>
+    <text x="735" y="547" fill="#5b21b6" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="800">Launch</text>
+
+    <text x="581" y="409" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700">No</text>
+    <text x="806" y="409" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700">Yes</text>
+  </g>
+</svg>

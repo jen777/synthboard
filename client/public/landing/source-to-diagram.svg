@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="640" viewBox="0 0 760 640" role="img" aria-labelledby="title desc">
+  <title id="title">Source material options</title>
+  <desc id="desc">Cards for transcripts, notes, concepts, and specs flowing into diagram outputs.</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f4f7ff"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#14b8a6"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#1e293b" flood-opacity="0.14"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect width="760" height="640" rx="34" fill="#f8fafc"/>
+  <circle cx="640" cy="96" r="92" fill="#e0f2fe"/>
+  <circle cx="120" cy="560" r="118" fill="#eef2ff"/>
+
+  <g filter="url(#shadow)">
+    <rect x="62" y="72" width="238" height="116" rx="22" fill="url(#panel)" stroke="#e2e8f0"/>
+    <rect x="62" y="226" width="238" height="116" rx="22" fill="url(#panel)" stroke="#e2e8f0"/>
+    <rect x="62" y="380" width="238" height="116" rx="22" fill="url(#panel)" stroke="#e2e8f0"/>
+  </g>
+
+  <text x="92" y="120" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800">Meeting transcript</text>
+  <rect x="92" y="142" width="158" height="8" rx="4" fill="#94a3b8"/>
+  <rect x="92" y="160" width="118" height="8" rx="4" fill="#cbd5e1"/>
+
+  <text x="92" y="274" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800">Learning concept</text>
+  <rect x="92" y="296" width="176" height="8" rx="4" fill="#94a3b8"/>
+  <rect x="92" y="314" width="132" height="8" rx="4" fill="#cbd5e1"/>
+
+  <text x="92" y="428" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800">Product spec</text>
+  <rect x="92" y="450" width="164" height="8" rx="4" fill="#94a3b8"/>
+  <rect x="92" y="468" width="126" height="8" rx="4" fill="#cbd5e1"/>
+
+  <path d="M312 130 C370 130 372 204 426 226" stroke="#64748b" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+  <path d="M312 284 C366 284 378 284 426 284" stroke="#64748b" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+  <path d="M312 438 C370 438 372 364 426 342" stroke="#64748b" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="444" y="156" width="254" height="330" rx="28" fill="#ffffff" stroke="#dbeafe"/>
+  </g>
+  <rect x="480" y="198" width="182" height="46" rx="14" fill="url(#blue)"/>
+  <text x="529" y="227" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="800">Diagram draft</text>
+
+  <path d="M571 244 V280" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="492" y="282" width="158" height="46" rx="14" fill="#f0fdf4" stroke="#86efac" stroke-width="2"/>
+  <text x="532" y="311" fill="#166534" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="800">Structure</text>
+
+  <path d="M571 328 V364" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M571 366 L650 410 L571 454 L492 410 Z" fill="#fff7ed" stroke="#fdba74" stroke-width="2"/>
+  <text x="542" y="415" fill="#9a3412" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800">Logic</text>
+
+  <rect x="498" y="454" width="146" height="20" rx="10" fill="#eef2ff"/>
+  <text x="529" y="469" fill="#4f46e5" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800">Open in draw.io</text>
+</svg>

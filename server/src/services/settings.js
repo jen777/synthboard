@@ -157,6 +157,14 @@ export function resolveLevel(level) {
   };
 }
 
+// Highest per-level source-character cap currently configured in the DB. Used as
+// the hard ceiling on stored source text: anything above the largest level cap
+// could never be sent to the model in full, so we reject it outright instead of
+// persisting an oversized payload. Lower-but-over-cap input is still truncated.
+export function maxConfiguredSourceChars() {
+  return LEVELS.reduce((max, l) => Math.max(max, getSetting(l.charsKey) ?? 0), 0);
+}
+
 export function getAllSettings() {
   return Object.fromEntries(cache);
 }

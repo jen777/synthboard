@@ -17,20 +17,40 @@ export default function Dashboard() {
   }, []);
 
   const atLimit = quota && quota.remaining <= 0;
+  const completed = items.filter(
+    (v) => v.status === "completed" || !v.status
+  ).length;
+  const inProgress = items.filter(
+    (v) => v.status && v.status !== "completed" && v.status !== "failed"
+  ).length;
 
   return (
-    <div className="container">
-      <div className="row spread" style={{ marginBottom: 18 }}>
-        <h2 style={{ margin: 0 }}>Your visualizations</h2>
-        <button
-          className="primary"
-          disabled={atLimit}
-          onClick={() => navigate("/create")}
-          title={atLimit ? "Account limit reached" : ""}
-        >
-          + New visualization
-        </button>
-      </div>
+    <div className="container dashboard-home">
+      <section className="dashboard-hero">
+        <div>
+          <span className="pill">Workspace</span>
+          <h2>Your visualizations</h2>
+          <p className="muted">
+            Create, reopen, and refine generated draw.io boards from one compact
+            home.
+          </p>
+        </div>
+        <div className="dashboard-actions">
+          <div className="dashboard-stats" aria-label="Visualization status">
+            <span><b>{items.length}</b> total</span>
+            <span><b>{completed}</b> ready</span>
+            <span><b>{inProgress}</b> running</span>
+          </div>
+          <button
+            className="primary"
+            disabled={atLimit}
+            onClick={() => navigate("/create")}
+            title={atLimit ? "Account limit reached" : ""}
+          >
+            + New visualization
+          </button>
+        </div>
+      </section>
 
       {atLimit && (
         <div className="banner info">
@@ -41,9 +61,11 @@ export default function Dashboard() {
       {loading ? (
         <span className="spinner" />
       ) : items.length === 0 ? (
-        <div className="card muted">
-          Nothing here yet. Create your first visualization from a note or
-          transcript.
+        <div className="card empty-state">
+          <b>No boards yet</b>
+          <span className="muted">
+            Create your first visualization from a note or transcript.
+          </span>
         </div>
       ) : (
         <div className="grid">

@@ -1,17 +1,21 @@
 const USE_CASES = [
   {
+    key: "transcripts",
     label: "Meeting transcripts",
     text: "Extract the decisions, owners, dependencies, and follow-ups from a long discussion into a diagram visualization people can act on.",
   },
   {
+    key: "concepts",
     label: "Rough concepts",
     text: "Turn a topic you are learning into a mind map, timeline, flow, or architecture visualization that makes the structure visible.",
   },
   {
+    key: "notes",
     label: "Product and tech notes",
     text: "Paste specs, RFCs, feature notes, or system descriptions and get a clean draw.io diagram visualization to refine with your team.",
   },
   {
+    key: "workflows",
     label: "Processes and workflows",
     text: "Convert plain-language steps into flowcharts, swimlanes, state machines, Kanban boards, and operational diagram visualizations.",
   },
@@ -204,8 +208,37 @@ function ExampleVisual({ type }) {
       </div>
       <span className="visual-arrow" />
       <DiagramThumb
-        type={type === "transcript" ? "swimlane" : type === "concept" ? "mindmap" : "architecture"}
+        type={
+          type === "transcript"
+            ? "swimlane"
+            : type === "concept"
+              ? "mindmap"
+              : "architecture"
+        }
       />
+    </div>
+  );
+}
+
+function InputGraphic({ type }) {
+  return (
+    <div className={`input-graphic ${type}`} aria-hidden="true">
+      <div className="input-doc">
+        <span />
+        <i />
+        <i />
+        <i />
+      </div>
+      <div className="input-signal">
+        <b />
+        <b />
+        <b />
+      </div>
+      <div className="input-board">
+        <em />
+        <strong />
+        <small />
+      </div>
     </div>
   );
 }
@@ -234,73 +267,81 @@ export default function Login() {
         <StartButton compact />
       </header>
 
-      <section className="landing-hero">
-        <div className="landing-copy">
-          <span className="pill">Text to editable draw.io diagram visualizations</span>
-          <h1>Create editable draw.io diagrams from text.</h1>
-          <p className="landing-lead">
-            SynthBoard turns the text you already have - meeting transcripts,
-            notes, specs, unfamiliar concepts, and process descriptions - into
-            diagram visualizations you can adjust, export, and share.
-          </p>
-          {error && (
-            <div className="banner error landing-error">
-              Sign-in failed. Please try again with your Google account.
+      <div className="landing-shell">
+        <section className="landing-hero">
+          <div className="landing-copy">
+            <span className="pill">Text to editable draw.io diagrams</span>
+            <h1>Turn raw notes into a diagram workspace.</h1>
+            <p className="landing-lead">
+              SynthBoard converts transcripts, specs, concepts, and workflows into
+              structured draw.io visualizations you can edit, export, and share.
+            </p>
+            {error && (
+              <div className="banner error landing-error">
+                Sign-in failed. Please try again with your Google account.
+              </div>
+            )}
+            <div className="landing-actions">
+              <StartButton />
+              <span className="muted">
+                Google sign-in is the only supported login method right now.
+              </span>
             </div>
-          )}
-          <div className="landing-actions">
-            <StartButton />
-            <span className="muted">
-              Google sign-in is the only supported login method right now.
-            </span>
+            <div className="hero-metrics" aria-label="SynthBoard capabilities">
+              <span><b>{FORMATS.length}</b> diagram styles</span>
+              <span><b>draw.io</b> native editing</span>
+              <span><b>1 paste</b> to first draft</span>
+            </div>
           </div>
-        </div>
 
-        <div className="hero-visual" aria-label="SynthBoard diagram preview">
-          <img
-            src="/landing/synthboard-diagram-preview.svg"
-            alt="Preview of source text becoming an editable draw.io diagram"
-          />
-        </div>
-      </section>
-
-      <section className="landing-band">
-        <div className="landing-section landing-intro">
-          <div>
-            <span className="section-kicker">What it does</span>
-            <h2>From messy source material to a visualization you can keep editing.</h2>
+          <div className="hero-visual" aria-label="SynthBoard diagram preview">
+            <img
+              src="/landing/synthboard-diagram-preview.svg"
+              alt="Preview of source text becoming an editable draw.io diagram"
+            />
+            <div className="hero-visual-footer">
+              <span>Structured output</span>
+              <span>Editable XML</span>
+              <span>Export ready</span>
+            </div>
           </div>
-          <p>
-            Paste the source, choose a visualization style, and SynthBoard
-            creates a structured diagram instead of a static image. The output
-            opens in the draw.io editor, so you can rename nodes, move shapes,
-            fix relationships, and export the final version.
-          </p>
-        </div>
-      </section>
+        </section>
 
-      <section className="landing-section split-section">
-        <div>
-          <span className="section-kicker">Good inputs</span>
-          <h2>Use it when the idea is clear but the visualization is not.</h2>
+        <section className="landing-section compact-section good-inputs-section">
+          <div className="good-inputs-layout">
+            <div className="section-heading">
+              <span className="section-kicker">Good inputs</span>
+              <h2>Use it when the idea is there but the structure is not.</h2>
+              <p>
+                Paste source material, choose a diagram style, then refine the
+                generated board in draw.io.
+              </p>
+            </div>
+            <div className="input-orchestration" aria-hidden="true">
+              <span>Source</span>
+              <i />
+              <span>Model pass</span>
+              <i />
+              <span>Editable board</span>
+            </div>
+          </div>
           <div className="use-case-grid">
             {USE_CASES.map((item) => (
-              <article className="feature-card" key={item.label}>
-                <h3>{item.label}</h3>
-                <p>{item.text}</p>
+              <article
+                className={`feature-card feature-card-${item.key}`}
+                key={item.label}
+              >
+                <InputGraphic type={item.key} />
+                <div>
+                  <h3>{item.label}</h3>
+                  <p>{item.text}</p>
+                </div>
               </article>
             ))}
           </div>
-        </div>
-        <figure className="landing-image-card">
-          <img
-            src="/landing/source-to-diagram.svg"
-            alt="Examples of transcripts, notes, concepts, and specs feeding diagram generation"
-          />
-        </figure>
-      </section>
+        </section>
 
-      <section className="landing-section">
+      <section className="landing-section compact-section">
         <div className="section-heading">
           <span className="section-kicker">Output styles</span>
           <h2>Pick the structure that fits the material.</h2>
@@ -309,7 +350,10 @@ export default function Login() {
             architecture, operations, and documentation.
           </p>
         </div>
-        <div className="format-grid" aria-label="Supported diagram and visualization styles">
+        <div
+          className="format-grid"
+          aria-label="Supported diagram and visualization styles"
+        >
           {FORMATS.map((format) => (
             <article className="format-card" key={format.key}>
               <DiagramThumb type={format.key} />
@@ -323,7 +367,7 @@ export default function Login() {
       <section className="landing-section examples-section">
         <div className="section-heading">
           <span className="section-kicker">Examples</span>
-          <h2>Turn unstructured text into a useful diagram visualization.</h2>
+          <h2>Fast starts from common source material.</h2>
         </div>
         <div className="example-grid">
           {EXAMPLES.map((example) => (
@@ -349,6 +393,7 @@ export default function Login() {
         </div>
         <StartButton />
       </section>
+      </div>
 
       <footer className="landing-footer muted">
         <span className="brand">

@@ -5,6 +5,7 @@ import { useAuth } from "../App.jsx";
 
 const TABS = [
   { key: "stats", label: "Statistics" },
+  { key: "generations", label: "Generation report" },
   { key: "users", label: "Users" },
   { key: "settings", label: "Settings" },
 ];
@@ -36,6 +37,7 @@ export default function Admin() {
       </div>
 
       {tab === "stats" && <Stats />}
+      {tab === "generations" && <Generations />}
       {tab === "users" && <Users />}
       {tab === "settings" && <Settings />}
     </div>
@@ -130,6 +132,159 @@ function Stat({ label, value }) {
     <div className="card" style={{ textAlign: "center" }}>
       <div style={{ fontSize: 30, fontWeight: 700 }}>{value}</div>
       <small className="muted">{label}</small>
+    </div>
+  );
+}
+
+// ── Generation report ─────────────────────────────────────────
+function fmtNum(n) {
+  if (n === null || n === undefined) return "—";
+  return Number(n).toLocaleString();
+}
+
+function fmtMs(ms) {
+  if (ms === null || ms === undefined) return "—";
+  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+}
+
+function fmtBytes(b) {
+  if (b === null || b === undefined) return "—";
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function Generations() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    api.admin
+      .generations()
+      .then(setData)
+      .catch((e) => setError(e.message));
+  }, []);
+
+  if (error) return <div className="banner error">{error}</div>;
+  if (!data) return <span className="spinner" />;
+
+  const { totals, byModel, recent } = data;
+
+  return (
+    <div className="stack">
+      <div className="grid">
+        <Stat label="Generations" value={fmtNum(totals.total)} />
+        <Stat label="Completed" value={fmtNum(totals.completed)} />
+        <Stat label="Failed" value={fmtNum(totals.failed)} />
+        <Stat label="Total tokens" value={fmtNum(totals.total_tokens)} />
+      </div>
+
+      <div className="grid">
+        <Stat label="Input tokens" value={fmtNum(totals.input_tokens)} />
+        <Stat label="Output tokens" value={fmtNum(totals.output_tokens)} />
+        <Stat label="Avg tokens / diagram" value={fmtNum(totals.avg_total_tokens)} />
+        <Stat label="Avg generation time" value={fmtMs(totals.avg_generation_ms)} />
+      </div>
+
+      <div className="grid">
+        <Stat label="Avg time to first token" value={fmtMs(totals.avg_first_token_ms)} />
+        <Stat label="Avg diagram size" value={fmtBytes(totals.avg_diagram_bytes)} />
+        <Stat label="Total diagram size" value={fmtBytes(totals.total_diagram_bytes)} />
+      </div>
+
+      <div className="card stack">
+        <b>By model</b>
+        {byModel.length === 0 ? (
+          <span className="muted">No data yet.</span>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th style={{ textAlign: "right" }}>Generations</th>
+                <th style={{ textAlign: "right" }}>Total tokens</th>
+                <th style={{ textAlign: "right" }}>Avg time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byModel.map((m) => (
+                <tr key={m.model}>
+                  <td>{m.model}</td>
+                  <td style={{ textAlign: "right" }}>{fmtNum(m.count)}</td>
+                  <td style={{ textAlign: "right" }}>{fmtNum(m.total_tokens)}</td>
+                  <td style={{ textAlign: "right" }}>{fmtMs(m.avg_generation_ms)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card stack">
+        <b>Recent generations (last 100)</b>
+        {recent.length === 0 ? (
+          <span className="muted">No generations recorded yet.</span>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Diagram</th>
+                  <th>User</th>
+                  <th>Preset</th>
+                  <th>Model</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: "right" }}>In</th>
+                  <th style={{ textAlign: "right" }}>Out</th>
+                  <th style={{ textAlign: "right" }}>Total</th>
+                  <th style={{ textAlign: "right" }}>Time</th>
+                  <th style={{ textAlign: "right" }}>Size</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((g) => (
+                  <tr key={g.id}>
+                    <td title={new Date(g.created_at).toLocaleString()}>
+                      {new Date(g.created_at).toLocaleDateString()}
+                    </td>
+                    <td>{g.viz_title || "—"}</td>
+                    <td>
+                      <small className="muted">
+                        {g.user_name || g.user_email || "—"}
+                      </small>
+                    </td>
+                    <td>{g.preset || "—"}</td>
+                    <td>
+                      <small className="muted">{g.model || "—"}</small>
+                    </td>
+                    <td>
+                      {g.status === "failed" ? (
+                        <span
+                          className="pill"
+                          style={{ color: "var(--danger, #e5484d)" }}
+                          title={g.error || ""}
+                        >
+                          failed
+                        </span>
+                      ) : (
+                        <span className="pill">ok</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "right" }}>{fmtNum(g.prompt_tokens)}</td>
+                    <td style={{ textAlign: "right" }}>
+                      {fmtNum(g.completion_tokens)}
+                    </td>
+                    <td style={{ textAlign: "right" }}>{fmtNum(g.total_tokens)}</td>
+                    <td style={{ textAlign: "right" }}>{fmtMs(g.generation_ms)}</td>
+                    <td style={{ textAlign: "right" }}>{fmtBytes(g.diagram_bytes)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

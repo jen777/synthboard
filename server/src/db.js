@@ -65,6 +65,41 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value      TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Per-generation telemetry for diagrams produced by the LLM. One row is written
+-- each time generation finishes (success or failure). Kept in its own table so
+-- the visualizations table stays lean and the admin report can aggregate freely.
+CREATE TABLE IF NOT EXISTS diagram_generations (
+  id                BIGSERIAL PRIMARY KEY,
+  visualization_id  BIGINT REFERENCES visualizations(id) ON DELETE CASCADE,
+  user_id           BIGINT REFERENCES users(id) ON DELETE CASCADE,
+  preset            TEXT,
+  model             TEXT,
+  -- 'completed' | 'failed' — mirrors the visualization outcome.
+  status            TEXT NOT NULL DEFAULT 'completed',
+  -- Wall-clock time of the LLM call, and time to first streamed token.
+  generation_ms     INTEGER,
+  first_token_ms    INTEGER,
+  -- Size of the generated draw.io XML, in UTF-8 bytes.
+  diagram_bytes     INTEGER,
+  -- Token accounting reported by the model.
+  prompt_tokens     INTEGER,
+  completion_tokens INTEGER,
+  total_tokens      INTEGER,
+  -- Sampling parameters and stop reason used for the call.
+  temperature       REAL,
+  top_p             REAL,
+  finish_reason     TEXT,
+  -- Any extra provider metadata we want to keep without a column each.
+  meta              JSONB,
+  error             TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_diagram_generations_created
+  ON diagram_generations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_diagram_generations_user
+  ON diagram_generations(user_id);
 `;
 
 export async function initSchema() {

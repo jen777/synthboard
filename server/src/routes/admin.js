@@ -61,6 +61,61 @@ router.get("/stats", async (req, res, next) => {
   }
 });
 
+// ── Diagram generation report ─────────────────────────────────
+// Telemetry captured per generation: timing, output size, token usage and
+// other LLM metadata. Returns headline aggregates plus the most recent rows.
+router.get("/generations", async (req, res, next) => {
+  try {
+    const [totals, byModel, recent] = await Promise.all([
+      query(
+        `SELECT
+           COUNT(*)::int                                  AS total,
+           COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
+           COUNT(*) FILTER (WHERE status = 'failed')::int    AS failed,
+           COALESCE(SUM(prompt_tokens), 0)::bigint         AS input_tokens,
+           COALESCE(SUM(completion_tokens), 0)::bigint     AS output_tokens,
+           COALESCE(SUM(total_tokens), 0)::bigint          AS total_tokens,
+           ROUND(AVG(total_tokens))::int                   AS avg_total_tokens,
+           ROUND(AVG(generation_ms))::int                  AS avg_generation_ms,
+           ROUND(AVG(first_token_ms))::int                 AS avg_first_token_ms,
+           ROUND(AVG(diagram_bytes))::int                  AS avg_diagram_bytes,
+           COALESCE(SUM(diagram_bytes), 0)::bigint         AS total_diagram_bytes
+         FROM diagram_generations`,
+      ),
+      query(
+        `SELECT COALESCE(model, '—') AS model,
+                COUNT(*)::int                          AS count,
+                COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
+                ROUND(AVG(generation_ms))::int         AS avg_generation_ms
+           FROM diagram_generations
+          GROUP BY model
+          ORDER BY count DESC`,
+      ),
+      query(
+        `SELECT g.id, g.preset, g.model, g.status,
+                g.generation_ms, g.first_token_ms, g.diagram_bytes,
+                g.prompt_tokens, g.completion_tokens, g.total_tokens,
+                g.temperature, g.top_p, g.finish_reason, g.error, g.created_at,
+                v.title AS viz_title,
+                u.email AS user_email, u.name AS user_name
+           FROM diagram_generations g
+           LEFT JOIN visualizations v ON v.id = g.visualization_id
+           LEFT JOIN users u ON u.id = g.user_id
+          ORDER BY g.created_at DESC
+          LIMIT 100`,
+      ),
+    ]);
+
+    res.json({
+      totals: totals.rows[0],
+      byModel: byModel.rows,
+      recent: recent.rows,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── User management ───────────────────────────────────────────
 router.get("/users", async (req, res, next) => {
   try {

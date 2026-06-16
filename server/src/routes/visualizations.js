@@ -88,7 +88,12 @@ async function runGeneration(vizId, userId, { preset, sourceText, title, maxSour
       vizId,
     ]);
 
-    const { xml } = await generateDrawio({ preset, sourceText, title, maxSourceChars });
+    const { xml, usage, meta } = await generateDrawio({
+      preset,
+      sourceText,
+      title,
+      maxSourceChars,
+    });
 
     await query(
       `UPDATE visualizations
@@ -96,6 +101,15 @@ async function runGeneration(vizId, userId, { preset, sourceText, title, maxSour
         WHERE id = $2`,
       [xml, vizId],
     );
+
+    await recordGeneration({
+      vizId,
+      userId,
+      preset,
+      status: "completed",
+      usage,
+      meta,
+    });
 
     console.log("[viz] generate done", {
       userId,
@@ -116,6 +130,52 @@ async function runGeneration(vizId, userId, { preset, sourceText, title, maxSour
     ).catch((e) =>
       console.error("[viz] could not record failure", { vizId, message: e?.message }),
     );
+    await recordGeneration({
+      vizId,
+      userId,
+      preset,
+      status: "failed",
+      error: err?.message || "Generation failed",
+    });
+  }
+}
+
+// Persist one row of generation telemetry. Best-effort: a logging failure must
+// never mask the underlying generation result, so errors here are swallowed.
+async function recordGeneration({ vizId, userId, preset, status, usage, meta, error }) {
+  const m = meta || {};
+  try {
+    await query(
+      `INSERT INTO diagram_generations
+         (visualization_id, user_id, preset, model, status,
+          generation_ms, first_token_ms, diagram_bytes,
+          prompt_tokens, completion_tokens, total_tokens,
+          temperature, top_p, finish_reason, meta, error)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+      [
+        vizId,
+        userId,
+        preset,
+        m.model ?? null,
+        status,
+        m.elapsedMs ?? null,
+        m.firstTokenMs ?? null,
+        m.diagramBytes ?? null,
+        usage?.prompt_tokens ?? null,
+        usage?.completion_tokens ?? null,
+        usage?.total_tokens ?? null,
+        m.temperature ?? null,
+        m.topP ?? null,
+        m.finishReason ?? null,
+        usage ? JSON.stringify(usage) : null,
+        error ?? null,
+      ],
+    );
+  } catch (e) {
+    console.error("[viz] could not record generation telemetry", {
+      vizId,
+      message: e?.message,
+    });
   }
 }
 

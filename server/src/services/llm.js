@@ -91,7 +91,9 @@ function extractDrawioXml(text) {
 
 /**
  * Generate draw.io XML from source text for a given preset.
- * @returns {Promise<{ xml: string, usage: object }>}
+ * @returns {Promise<{ xml: string, usage: object, meta: object }>}
+ *   `meta` carries generation telemetry (model, timings, sampling params,
+ *   finish reason) so callers can persist it for the admin report.
  */
 export async function generateDrawio({ preset, sourceText, title, maxSourceChars }) {
   const presetDef = PRESETS[preset];
@@ -122,6 +124,8 @@ Return only the draw.io <mxfile> XML.`;
 
   const model = getSetting("llm_model") || config.llm.model;
   const maxTokens = getSetting("llm_max_tokens") || config.llm.maxTokens;
+  const temperature = getSetting("llm_temperature") ?? 1;
+  const topP = getSetting("llm_top_p") ?? 0.95;
 
   log("request →", {
     model,
@@ -147,8 +151,8 @@ Return only the draw.io <mxfile> XML.`;
         { role: "system", content: BASE_SYSTEM },
         { role: "user", content: userPrompt },
       ],
-      temperature: getSetting("llm_temperature") ?? 1,
-      top_p: getSetting("llm_top_p") ?? 0.95,
+      temperature,
+      top_p: topP,
       max_tokens: maxTokens,
       stream: true,
       stream_options: { include_usage: true },
@@ -208,5 +212,18 @@ Return only the draw.io <mxfile> XML.`;
   }
 
   log("✓ extracted XML", { xmlChars: xml.length });
-  return { xml, usage };
+
+  const meta = {
+    model,
+    temperature,
+    topP,
+    maxTokens,
+    elapsedMs,
+    firstTokenMs,
+    finishReason,
+    chunks,
+    diagramBytes: Buffer.byteLength(xml, "utf8"),
+  };
+
+  return { xml, usage, meta };
 }

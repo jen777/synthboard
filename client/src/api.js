@@ -34,6 +34,7 @@ export const api = {
 
   admin: {
     stats: () => request("/api/admin/stats"),
+    generations: () => request("/api/admin/generations"),
     users: () => request("/api/admin/users"),
     setUserAdmin: (id, isAdmin) =>
       request(`/api/admin/users/${id}`, {

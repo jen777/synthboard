@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { query, pool } from "../db.js";
-import { resolveLevel, maxConfiguredSourceChars } from "../services/settings.js";
+import { resolveLevel } from "../services/settings.js";
 import { generateDrawio } from "../services/llm.js";
 import { isValidPreset, listPresets } from "../services/presets.js";
 
@@ -191,20 +191,14 @@ router.post("/", async (req, res, next) => {
   if (!isValidPreset(preset)) {
     return res.status(400).json({ error: "Unknown preset" });
   }
-
-  const { limit, maxChars } = resolveLevel(req.user.level);
-
-  // Hard ceiling on the stored payload, derived from DB settings: nothing above
-  // the largest configured per-level cap could ever be sent to the model in
-  // full, so reject it rather than persist it. Input within this ceiling but
-  // over the user's own level cap is truncated at generation time.
-  const storageCeiling = maxConfiguredSourceChars();
-  if (sourceText.length > storageCeiling) {
-    return res.status(413).json({
-      error: `Source text is too large (max ${storageCeiling.toLocaleString()} chars).`,
-    });
+  // Hard ceiling on the stored payload, matching the max allowed per-level char
+  // setting (admin char limits are capped at 100k). Input within this ceiling
+  // but over the user's own level cap is truncated at generation time.
+  if (sourceText.length > 100_000) {
+    return res.status(413).json({ error: "Source text is too large (max 100k chars)" });
   }
 
+  const { limit, maxChars } = resolveLevel(req.user.level);
   console.log("[viz] generate request", {
     userId: req.user.id,
     preset,

@@ -13,7 +13,7 @@ const DEFAULT_MAX_SOURCE_CHARS = 7000;
 
 // Poll a visualization until generation finishes. Resolves with the completed
 // row, throws on failure or if it takes implausibly long.
-async function pollUntilDone(id, { intervalMs = 2000, timeoutMs = 360_000 } = {}) {
+async function pollUntilDone(id, { intervalMs = 5000, timeoutMs = 600_000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const { visualization } = await api.get(id);

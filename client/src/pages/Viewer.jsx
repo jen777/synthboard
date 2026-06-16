@@ -29,7 +29,7 @@ export default function Viewer() {
           visualization.status === "pending" ||
           visualization.status === "processing"
         ) {
-          timer = setTimeout(load, 2000);
+          timer = setTimeout(load, 5000);
         }
       } catch (err) {
         if (!cancelled) setError(err.message);

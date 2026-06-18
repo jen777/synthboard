@@ -167,7 +167,7 @@ async function recordGeneration({ vizId, userId, preset, status, usage, meta, er
         m.temperature ?? null,
         m.topP ?? null,
         m.finishReason ?? null,
-        usage ? JSON.stringify(usage) : null,
+        meta ? JSON.stringify(meta) : null,
         error ?? null,
       ],
     );

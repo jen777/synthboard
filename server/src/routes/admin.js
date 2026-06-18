@@ -8,6 +8,13 @@ import {
   resolveLevel,
 } from "../services/settings.js";
 import { LEVELS, isValidLevel } from "../services/levels.js";
+import {
+  deleteIconLibrary,
+  ingestDrawioLibrary,
+  listIconLibraries,
+  listIconObjects,
+  searchIconObjects,
+} from "../services/drawioLibraries.js";
 
 const router = Router();
 
@@ -111,6 +118,85 @@ router.get("/generations", async (req, res, next) => {
       byModel: byModel.rows,
       recent: recent.rows,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Draw.io icon library catalog ──────────────────────────────
+router.get("/icon-libraries", async (req, res, next) => {
+  try {
+    res.json({ libraries: await listIconLibraries() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/icon-libraries/search", async (req, res, next) => {
+  const q = String(req.query.q || "").trim();
+  if (!q) return res.json({ objects: [] });
+
+  try {
+    const objects = await searchIconObjects(q, { limit: 50 });
+    res.json({ objects });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/icon-libraries", async (req, res, next) => {
+  const {
+    id,
+    name,
+    provider,
+    styleFamily,
+    sourceUrl,
+    sourceType,
+    version,
+    content,
+  } = req.body || {};
+
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({ error: "Library name is required" });
+  }
+  if (!content || typeof content !== "string" || !content.includes("<mxlibrary")) {
+    return res.status(400).json({ error: "A draw.io <mxlibrary> XML file is required" });
+  }
+  if (content.length > 10_000_000) {
+    return res.status(413).json({ error: "Library file is too large (max 10 MB)" });
+  }
+
+  try {
+    const result = await ingestDrawioLibrary({
+      id,
+      name: name.trim(),
+      provider: provider ? String(provider).trim() : null,
+      styleFamily: styleFamily ? String(styleFamily).trim() : null,
+      sourceUrl: sourceUrl ? String(sourceUrl).trim() : null,
+      sourceType: sourceType || "admin-upload",
+      version: version ? String(version).trim() : null,
+      content,
+      metadata: { uploadedBy: req.user.email },
+    });
+    res.status(201).json({ library: result });
+  } catch (err) {
+    res.status(400).json({ error: err.message || "Could not ingest library" });
+  }
+});
+
+router.get("/icon-libraries/:id/objects", async (req, res, next) => {
+  try {
+    res.json({ objects: await listIconObjects(req.params.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/icon-libraries/:id", async (req, res, next) => {
+  try {
+    const deleted = await deleteIconLibrary(req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

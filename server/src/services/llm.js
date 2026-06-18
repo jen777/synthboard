@@ -2,6 +2,10 @@ import OpenAI from "openai";
 import { config } from "../config.js";
 import { getSetting } from "./settings.js";
 import { PRESETS } from "./presets.js";
+import {
+  applyIconPlaceholders,
+  buildIconPromptContext,
+} from "./drawioLibraries.js";
 
 // Tagged logger so generation logs are easy to grep in production.
 function log(msg, extra) {
@@ -112,8 +116,26 @@ export async function generateDrawio({ preset, sourceText, title, maxSourceChars
     });
   }
 
+  let iconContext = { prompt: "", candidates: [] };
+  try {
+    iconContext = await buildIconPromptContext({
+      preset,
+      sourceText: trimmedSource,
+      title,
+    });
+    if (iconContext.candidates.length > 0) {
+      log("icon candidates selected", {
+        count: iconContext.candidates.length,
+        first: iconContext.candidates[0]?.id,
+      });
+    }
+  } catch (err) {
+    log("icon catalog lookup skipped", { message: err?.message });
+  }
+
   const userPrompt = `Diagram type: ${presetDef.label}
 ${presetDef.guidance}
+${iconContext.prompt ? `\n${iconContext.prompt}\n` : ""}
 
 ${title ? `Suggested title: ${title}\n` : ""}Source material to visualize:
 """
@@ -203,12 +225,28 @@ Return only the draw.io <mxfile> XML.`;
     log("⚠ response truncated (hit max_tokens) — consider raising Max tokens");
   }
 
-  const xml = extractDrawioXml(text);
-  if (!xml) {
+  const extractedXml = extractDrawioXml(text);
+  if (!extractedXml) {
     log("✗ could not extract draw.io XML from response", {
       preview: text.slice(0, 300),
     });
     throw new Error("Model did not return valid draw.io XML.");
+  }
+
+  let xml = extractedXml;
+  let iconMeta = { applied: [], missing: [] };
+  try {
+    const processed = await applyIconPlaceholders(extractedXml);
+    xml = processed.xml;
+    iconMeta = { applied: processed.applied, missing: processed.missing };
+    if (processed.applied.length > 0 || processed.missing.length > 0) {
+      log("icon placeholders processed", {
+        applied: processed.applied.length,
+        missing: processed.missing.length,
+      });
+    }
+  } catch (err) {
+    log("icon postprocess skipped", { message: err?.message });
   }
 
   log("✓ extracted XML", { xmlChars: xml.length });
@@ -223,6 +261,9 @@ Return only the draw.io <mxfile> XML.`;
     finishReason,
     chunks,
     diagramBytes: Buffer.byteLength(xml, "utf8"),
+    iconCandidates: iconContext.candidates.map((c) => c.id),
+    iconsApplied: iconMeta.applied,
+    iconsMissing: iconMeta.missing,
   };
 
   return { xml, usage, meta };

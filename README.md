@@ -11,6 +11,8 @@ OpenAI-compatible API).
   start as Sketcher. Each level's visualization quota and input-size limit, plus
   a user's level, are editable from the admin panel.
 - **Embedded draw.io viewer** + one-click `.drawio` export
+- **Optional draw.io icon library catalog** for richer generated architecture
+  diagrams using indexed custom shape libraries
 - **Node.js + Express + Postgres + React**, fully Dockerized
 
 ---
@@ -97,6 +99,38 @@ The source text is sent to the LLM with a system prompt that defines the
 draw.io XML output contract, plus preset-specific guidance (flowchart, UML,
 sequence, ER, mind map, infographic). The response is parsed to a valid
 `<mxfile>` document, stored, and rendered.
+
+### Draw.io icon libraries
+
+SynthBoard can index public or local draw.io custom libraries (`<mxlibrary>`
+XML files) and use them during generation without putting the full icon payloads
+into the model prompt.
+
+Admins can upload libraries from **Admin panel → Icon libraries**. The screen
+shows each indexed library, object counts, and object names.
+
+For scripted ingestion:
+
+1. Review the source library's license before production use.
+2. Add sources to a manifest, using
+   `server/drawio-libraries/sources.example.json` as the template.
+3. Run the ingestion command from `server/` with normal app database env vars:
+
+```bash
+npm run ingest:drawio-libraries -- --manifest ./drawio-libraries/sources.example.json
+```
+
+The ingester stores compact searchable metadata plus the exact draw.io object
+styles in Postgres. During generation, the server retrieves a small candidate
+set, asks the LLM to add `synthIcon=<icon id>` to matching vertex styles, then
+post-processes the final XML and replaces those placeholders with the exact
+draw.io image styles. If no catalog exists or no match is found, generation
+falls back to ordinary draw.io shapes.
+
+Admins can also use the API directly: `GET /api/admin/icon-libraries`,
+`GET /api/admin/icon-libraries/:id/objects`,
+`POST /api/admin/icon-libraries`, `DELETE /api/admin/icon-libraries/:id`, and
+`GET /api/admin/icon-libraries/search?q=azure storage`.
 
 ## Notes
 

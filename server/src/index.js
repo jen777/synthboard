@@ -22,7 +22,7 @@ const app = express();
 app.set("trust proxy", 1);
 
 app.use(morgan(config.env === "production" ? "combined" : "dev"));
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "12mb" }));
 
 // In production the SPA is same-origin (served + proxied by nginx), so CORS is
 // only really needed for local Vite dev on a different port.

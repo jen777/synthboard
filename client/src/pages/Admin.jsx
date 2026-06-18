@@ -6,6 +6,7 @@ import { useAuth } from "../App.jsx";
 const TABS = [
   { key: "stats", label: "Statistics" },
   { key: "generations", label: "Generation report" },
+  { key: "libraries", label: "Icon libraries" },
   { key: "users", label: "Users" },
   { key: "settings", label: "Settings" },
 ];
@@ -38,6 +39,7 @@ export default function Admin() {
 
       {tab === "stats" && <Stats />}
       {tab === "generations" && <Generations />}
+      {tab === "libraries" && <IconLibraries />}
       {tab === "users" && <Users />}
       {tab === "settings" && <Settings />}
     </div>
@@ -285,6 +287,274 @@ function Generations() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Draw.io icon libraries ────────────────────────────────────
+function IconLibraries() {
+  const [libraries, setLibraries] = useState(null);
+  const [objects, setObjects] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [error, setError] = useState(null);
+  const [status, setStatus] = useState("idle");
+  const [form, setForm] = useState({
+    id: "",
+    name: "",
+    provider: "",
+    styleFamily: "",
+    version: "",
+    sourceUrl: "",
+  });
+  const [file, setFile] = useState(null);
+
+  function load() {
+    api.admin
+      .iconLibraries()
+      .then((d) => {
+        setLibraries(d.libraries);
+        if (selected && !d.libraries.some((l) => l.id === selected.id)) {
+          setSelected(null);
+          setObjects([]);
+        }
+      })
+      .catch((e) => setError(e.message));
+  }
+
+  useEffect(load, []);
+
+  async function selectLibrary(library) {
+    setSelected(library);
+    setObjects([]);
+    setError(null);
+    try {
+      const d = await api.admin.iconLibraryObjects(library.id);
+      setObjects(d.objects);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  function setField(key, value) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function upload(e) {
+    e.preventDefault();
+    if (!file) {
+      setError("Choose a .xml library file first.");
+      return;
+    }
+    setError(null);
+    setStatus("uploading");
+    try {
+      const content = await file.text();
+      const d = await api.admin.uploadIconLibrary({
+        ...form,
+        name: form.name.trim() || file.name.replace(/\.xml$/i, ""),
+        sourceType: "admin-upload",
+        content,
+      });
+      setStatus(`Imported ${d.library.objects} objects.`);
+      setForm({
+        id: "",
+        name: "",
+        provider: "",
+        styleFamily: "",
+        version: "",
+        sourceUrl: "",
+      });
+      setFile(null);
+      await api.admin.iconLibraries().then((data) => {
+        setLibraries(data.libraries);
+        const created = data.libraries.find((l) => l.id === d.library.libraryId);
+        if (created) selectLibrary(created);
+      });
+    } catch (err) {
+      setError(err.message);
+      setStatus("idle");
+    }
+  }
+
+  async function remove(library) {
+    if (
+      !window.confirm(
+        `Delete ${library.name}? This removes ${library.object_count} indexed objects from generation.`,
+      )
+    )
+      return;
+    setError(null);
+    try {
+      await api.admin.deleteIconLibrary(library.id);
+      if (selected?.id === library.id) {
+        setSelected(null);
+        setObjects([]);
+      }
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  if (error && !libraries) return <div className="banner error">{error}</div>;
+  if (!libraries) return <span className="spinner" />;
+
+  return (
+    <div className="stack">
+      {error && <div className="banner error">{error}</div>}
+
+      <form className="card stack" onSubmit={upload}>
+        <b>Upload draw.io custom library</b>
+        <div className="grid">
+          <div>
+            <label className="muted">Library name</label>
+            <input
+              value={form.name}
+              onChange={(e) => setField("name", e.target.value)}
+              placeholder="Azure General"
+              style={{ marginTop: 6 }}
+            />
+          </div>
+          <div>
+            <label className="muted">Provider</label>
+            <input
+              value={form.provider}
+              onChange={(e) => setField("provider", e.target.value)}
+              placeholder="Azure"
+              style={{ marginTop: 6 }}
+            />
+          </div>
+          <div>
+            <label className="muted">Style family</label>
+            <input
+              value={form.styleFamily}
+              onChange={(e) => setField("styleFamily", e.target.value)}
+              placeholder="azure-flat"
+              style={{ marginTop: 6 }}
+            />
+          </div>
+        </div>
+        <div className="grid">
+          <div>
+            <label className="muted">Stable id</label>
+            <input
+              value={form.id}
+              onChange={(e) => setField("id", e.target.value)}
+              placeholder="azure-general"
+              style={{ marginTop: 6 }}
+            />
+          </div>
+          <div>
+            <label className="muted">Version</label>
+            <input
+              value={form.version}
+              onChange={(e) => setField("version", e.target.value)}
+              placeholder="2026-06"
+              style={{ marginTop: 6 }}
+            />
+          </div>
+          <div>
+            <label className="muted">Source URL</label>
+            <input
+              value={form.sourceUrl}
+              onChange={(e) => setField("sourceUrl", e.target.value)}
+              placeholder="https://github.com/..."
+              style={{ marginTop: 6 }}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="muted">Library XML file</label>
+          <input
+            type="file"
+            accept=".xml,text/xml,application/xml"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            style={{ marginTop: 6 }}
+          />
+        </div>
+        <div className="row">
+          <button type="submit" className="primary" disabled={status === "uploading"}>
+            {status === "uploading" ? "Uploading…" : "Upload library"}
+          </button>
+          {status !== "idle" && status !== "uploading" && (
+            <span className="muted">{status}</span>
+          )}
+        </div>
+      </form>
+
+      <div className="card stack">
+        <b>Indexed libraries</b>
+        {libraries.length === 0 ? (
+          <span className="muted">No icon libraries have been uploaded yet.</span>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Provider</th>
+                  <th>Style</th>
+                  <th style={{ textAlign: "right" }}>Objects</th>
+                  <th>Updated</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {libraries.map((library) => (
+                  <tr key={library.id}>
+                    <td>
+                      <button
+                        className={`link-button ${selected?.id === library.id ? "active" : ""}`}
+                        onClick={() => selectLibrary(library)}
+                        type="button"
+                      >
+                        {library.name}
+                      </button>
+                      <small className="muted" style={{ display: "block" }}>
+                        {library.id}
+                      </small>
+                    </td>
+                    <td>{library.provider || "—"}</td>
+                    <td>{library.style_family || "—"}</td>
+                    <td style={{ textAlign: "right" }}>{library.object_count}</td>
+                    <td>{new Date(library.ingested_at).toLocaleDateString()}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        className="danger"
+                        type="button"
+                        onClick={() => remove(library)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {selected && (
+        <div className="card stack">
+          <div className="row spread">
+            <b>{selected.name} objects</b>
+            <span className="pill">{objects.length} objects</span>
+          </div>
+          {objects.length === 0 ? (
+            <span className="muted">No objects found for this library.</span>
+          ) : (
+            <div className="object-list">
+              {objects.map((object) => (
+                <div key={object.id} className="object-row">
+                  <span>{object.title}</span>
+                  <small className="muted">{object.id}</small>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

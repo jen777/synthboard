@@ -100,6 +100,43 @@ CREATE INDEX IF NOT EXISTS idx_diagram_generations_created
   ON diagram_generations(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_diagram_generations_user
   ON diagram_generations(user_id);
+
+-- Draw.io custom library catalog. Libraries are ingested from public or local
+-- <mxlibrary> XML files, indexed by compact metadata, and referenced during LLM
+-- generation without putting the full icon payloads into the prompt.
+CREATE TABLE IF NOT EXISTS drawio_icon_libraries (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  provider      TEXT,
+  style_family  TEXT,
+  source_url    TEXT,
+  source_type   TEXT,
+  version       TEXT,
+  object_count  INTEGER NOT NULL DEFAULT 0,
+  metadata      JSONB,
+  ingested_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS drawio_icon_objects (
+  id             TEXT PRIMARY KEY,
+  library_id     TEXT NOT NULL REFERENCES drawio_icon_libraries(id) ON DELETE CASCADE,
+  title          TEXT NOT NULL,
+  search_text    TEXT NOT NULL,
+  aliases        TEXT[] NOT NULL DEFAULT '{}',
+  width          REAL,
+  height         REAL,
+  aspect         TEXT,
+  style          TEXT,
+  cell_xml       TEXT,
+  xml_compressed TEXT NOT NULL,
+  metadata       JSONB,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_drawio_icon_objects_library
+  ON drawio_icon_objects(library_id);
+CREATE INDEX IF NOT EXISTS idx_drawio_icon_objects_search_text
+  ON drawio_icon_objects USING gin (to_tsvector('simple', search_text));
 `;
 
 export async function initSchema() {

@@ -302,6 +302,45 @@ button.danger {
 }
 button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--danger); }
 
+.link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent);
+  font-weight: 700;
+  text-align: left;
+}
+.link-button:hover:not(:disabled),
+.link-button.active {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  color: var(--accent-2);
+}
+
+.object-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+.object-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+}
+.object-row span,
+.object-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
 .tab {
   border: none; border-bottom: 2px solid transparent; border-radius: 0;

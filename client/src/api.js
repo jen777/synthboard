@@ -54,5 +54,17 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(settings),
       }),
+    iconLibraries: () => request("/api/admin/icon-libraries"),
+    iconLibraryObjects: (id) =>
+      request(`/api/admin/icon-libraries/${encodeURIComponent(id)}/objects`),
+    uploadIconLibrary: (payload) =>
+      request("/api/admin/icon-libraries", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    deleteIconLibrary: (id) =>
+      request(`/api/admin/icon-libraries/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
   },
 };

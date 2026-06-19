@@ -128,8 +128,57 @@ function extractObjectDetails(item) {
   };
 }
 
-function objectId(libraryId, title, index) {
+function baseObjectId(libraryId, title, index) {
   return `${libraryId}.${slugify(title) || `object-${index + 1}`}`;
+}
+
+function objectDataFingerprint(obj) {
+  return JSON.stringify({
+    width: obj.width,
+    height: obj.height,
+    aspect: obj.aspect,
+    xmlCompressed: obj.xmlCompressed,
+  });
+}
+
+function resolveObjectIdCollisions(objects) {
+  const groups = new Map();
+  for (const obj of objects) {
+    const group = groups.get(obj.baseId) || [];
+    group.push(obj);
+    groups.set(obj.baseId, group);
+  }
+
+  const resolved = [];
+  let duplicatesIgnored = 0;
+  let variantsCreated = 0;
+
+  for (const [baseId, group] of groups.entries()) {
+    const distinct = [];
+    const seen = new Set();
+    for (const obj of group) {
+      const fingerprint = objectDataFingerprint(obj);
+      if (seen.has(fingerprint)) {
+        duplicatesIgnored++;
+        continue;
+      }
+      seen.add(fingerprint);
+      distinct.push(obj);
+    }
+
+    if (distinct.length === 1) {
+      const [{ baseId: _baseId, ...obj }] = distinct;
+      resolved.push({ ...obj, id: baseId });
+      continue;
+    }
+
+    distinct.forEach(({ baseId: _baseId, ...obj }, index) => {
+      variantsCreated++;
+      resolved.push({ ...obj, id: `${baseId}-v${index + 1}` });
+    });
+  }
+
+  return { objects: resolved, duplicatesIgnored, variantsCreated };
 }
 
 function objectAliases({ title, provider }) {
@@ -163,7 +212,7 @@ export async function ingestDrawioLibrary({
     throw new Error("Expected <mxlibrary> to contain a JSON array.");
   }
 
-  const objects = items
+  const rawObjects = items
     .filter((item) => item?.xml)
     .map((item, index) => {
       const details = extractObjectDetails(item);
@@ -176,13 +225,22 @@ export async function ingestDrawioLibrary({
         ...aliases,
       ]).join(" ");
       return {
-        id: objectId(libraryId, details.title, index),
+        baseId: baseObjectId(libraryId, details.title, index),
         libraryId,
         aliases,
         searchText,
         ...details,
       };
     });
+  const { objects, duplicatesIgnored, variantsCreated } =
+    resolveObjectIdCollisions(rawObjects);
+  if (duplicatesIgnored > 0 || variantsCreated > 0) {
+    console.log("[drawio-libraries] resolved duplicate object names", {
+      libraryId,
+      duplicatesIgnored,
+      variantsCreated,
+    });
+  }
 
   const client = await pool.connect();
   try {
@@ -249,7 +307,7 @@ export async function ingestDrawioLibrary({
     client.release();
   }
 
-  return { libraryId, objects: objects.length };
+  return { libraryId, objects: objects.length, duplicatesIgnored, variantsCreated };
 }
 
 export async function listIconLibraries() {

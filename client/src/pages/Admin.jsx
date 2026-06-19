@@ -355,7 +355,14 @@ function IconLibraries() {
         sourceType: "admin-upload",
         content,
       });
-      setStatus(`Imported ${d.library.objects} objects.`);
+      const ignored = d.library.duplicatesIgnored || 0;
+      const variants = d.library.variantsCreated || 0;
+      setStatus(
+        `Imported ${d.library.objects} objects` +
+          (ignored ? `, ignored ${ignored} duplicate${ignored === 1 ? "" : "s"}` : "") +
+          (variants ? `, created ${variants} variant${variants === 1 ? "" : "s"}` : "") +
+          ".",
+      );
       setForm({
         id: "",
         name: "",

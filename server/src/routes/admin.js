@@ -17,6 +17,7 @@ import {
 } from "../services/drawioLibraries.js";
 
 const router = Router();
+const MAX_ICON_LIBRARY_BYTES = 10 * 1024 * 1024;
 
 // Every route here requires an authenticated admin.
 router.use(requireAdmin);
@@ -162,8 +163,8 @@ router.post("/icon-libraries", async (req, res, next) => {
   if (!content || typeof content !== "string" || !content.includes("<mxlibrary")) {
     return res.status(400).json({ error: "A draw.io <mxlibrary> XML file is required" });
   }
-  if (content.length > 10_000_000) {
-    return res.status(413).json({ error: "Library file is too large (max 10 MB)" });
+  if (Buffer.byteLength(content, "utf8") > MAX_ICON_LIBRARY_BYTES) {
+    return res.status(413).json({ error: "Library file is too large (max 10 MiB)" });
   }
 
   try {

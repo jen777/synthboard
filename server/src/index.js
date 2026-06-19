@@ -22,7 +22,9 @@ const app = express();
 app.set("trust proxy", 1);
 
 app.use(morgan(config.env === "production" ? "combined" : "dev"));
-app.use(express.json({ limit: "12mb" }));
+// Admin library uploads send XML inside JSON. A 10 MiB XML file can become
+// larger on the wire because quotes/newlines are escaped by JSON.stringify.
+app.use(express.json({ limit: "20mb" }));
 
 // In production the SPA is same-origin (served + proxied by nginx), so CORS is
 // only really needed for local Vite dev on a different port.

@@ -107,7 +107,11 @@ XML files) and use them during generation without putting the full icon payloads
 into the model prompt.
 
 Admins can upload libraries from **Admin panel → Icon libraries**. The screen
-shows each indexed library, object counts, and object names.
+shows each indexed library, object counts, and object names. Uploads accept
+draw.io library XML files up to 10 MiB. The Node JSON body parser and bundled
+nginx config both allow 20 MiB request bodies to leave room for JSON escaping
+around the XML payload; any external proxy in front of the app must allow at
+least that much request body size.
 
 For scripted ingestion:
 

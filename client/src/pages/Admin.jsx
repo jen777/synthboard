@@ -156,6 +156,24 @@ function fmtBytes(b) {
   return `${(b / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function fmtPct(part, total) {
+  const p = Number(part || 0);
+  const t = Number(total || 0);
+  if (!t) return "0%";
+  return `${Math.round((p / t) * 100)}%`;
+}
+
+function iconListTitle(items) {
+  if (!Array.isArray(items) || items.length === 0) return "";
+  return items
+    .map((item) => {
+      if (typeof item === "string") return item;
+      return item?.title ? `${item.title} (${item.id})` : item?.id;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 function Generations() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -170,7 +188,8 @@ function Generations() {
   if (error) return <div className="banner error">{error}</div>;
   if (!data) return <span className="spinner" />;
 
-  const { totals, byModel, recent } = data;
+  const { totals, byModel, byPresetIcons, recent } = data;
+  const completed = Number(totals.completed || 0);
 
   return (
     <div className="stack">
@@ -192,6 +211,25 @@ function Generations() {
         <Stat label="Avg time to first token" value={fmtMs(totals.avg_first_token_ms)} />
         <Stat label="Avg diagram size" value={fmtBytes(totals.avg_diagram_bytes)} />
         <Stat label="Total diagram size" value={fmtBytes(totals.total_diagram_bytes)} />
+      </div>
+
+      <div className="grid">
+        <Stat
+          label="Icon lookup triggered"
+          value={`${fmtNum(totals.icon_candidate_generations)} (${fmtPct(
+            totals.icon_candidate_generations,
+            completed,
+          )})`}
+        />
+        <Stat
+          label="Diagrams with icons"
+          value={`${fmtNum(totals.icon_applied_generations)} (${fmtPct(
+            totals.icon_applied_generations,
+            completed,
+          )})`}
+        />
+        <Stat label="Icons applied" value={fmtNum(totals.icons_applied_total)} />
+        <Stat label="Icon misses" value={fmtNum(totals.icons_missing_total)} />
       </div>
 
       <div className="card stack">
@@ -223,6 +261,40 @@ function Generations() {
       </div>
 
       <div className="card stack">
+        <b>Icon usage by preset</b>
+        {byPresetIcons.length === 0 ? (
+          <span className="muted">No completed generations recorded yet.</span>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Preset</th>
+                <th style={{ textAlign: "right" }}>Completed</th>
+                <th style={{ textAlign: "right" }}>Lookup</th>
+                <th style={{ textAlign: "right" }}>With icons</th>
+                <th style={{ textAlign: "right" }}>Icons</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byPresetIcons.map((p) => (
+                <tr key={p.preset}>
+                  <td>{p.preset}</td>
+                  <td style={{ textAlign: "right" }}>{fmtNum(p.count)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {fmtNum(p.with_candidates)} ({fmtPct(p.with_candidates, p.count)})
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {fmtNum(p.with_icons)} ({fmtPct(p.with_icons, p.count)})
+                  </td>
+                  <td style={{ textAlign: "right" }}>{fmtNum(p.icons_applied)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card stack">
         <b>Recent generations (last 100)</b>
         {recent.length === 0 ? (
           <span className="muted">No generations recorded yet.</span>
@@ -242,6 +314,8 @@ function Generations() {
                   <th style={{ textAlign: "right" }}>Total</th>
                   <th style={{ textAlign: "right" }}>Time</th>
                   <th style={{ textAlign: "right" }}>Size</th>
+                  <th style={{ textAlign: "right" }}>Icon lookup</th>
+                  <th style={{ textAlign: "right" }}>Icons used</th>
                 </tr>
               </thead>
               <tbody>
@@ -280,6 +354,24 @@ function Generations() {
                     <td style={{ textAlign: "right" }}>{fmtNum(g.total_tokens)}</td>
                     <td style={{ textAlign: "right" }}>{fmtMs(g.generation_ms)}</td>
                     <td style={{ textAlign: "right" }}>{fmtBytes(g.diagram_bytes)}</td>
+                    <td
+                      style={{ textAlign: "right" }}
+                      title={iconListTitle(g.icon_candidates)}
+                    >
+                      {fmtNum(g.icon_candidate_count)}
+                    </td>
+                    <td
+                      style={{ textAlign: "right" }}
+                      title={
+                        iconListTitle(g.icons_applied) ||
+                        iconListTitle(g.icons_missing)
+                      }
+                    >
+                      {fmtNum(g.icon_applied_count)}
+                      {g.icon_missing_count > 0 && (
+                        <small className="muted"> / {fmtNum(g.icon_missing_count)} miss</small>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

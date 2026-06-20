@@ -74,7 +74,7 @@ router.get("/stats", async (req, res, next) => {
 // other LLM metadata. Returns headline aggregates plus the most recent rows.
 router.get("/generations", async (req, res, next) => {
   try {
-    const [totals, byModel, recent] = await Promise.all([
+    const [totals, byModel, byPresetIcons, recent] = await Promise.all([
       query(
         `SELECT
            COUNT(*)::int                                  AS total,
@@ -87,7 +87,22 @@ router.get("/generations", async (req, res, next) => {
            ROUND(AVG(generation_ms))::int                  AS avg_generation_ms,
            ROUND(AVG(first_token_ms))::int                 AS avg_first_token_ms,
            ROUND(AVG(diagram_bytes))::int                  AS avg_diagram_bytes,
-           COALESCE(SUM(diagram_bytes), 0)::bigint         AS total_diagram_bytes
+           COALESCE(SUM(diagram_bytes), 0)::bigint         AS total_diagram_bytes,
+           COUNT(*) FILTER (
+             WHERE jsonb_array_length(COALESCE(meta->'iconCandidates', '[]'::jsonb)) > 0
+           )::int                                          AS icon_candidate_generations,
+           COUNT(*) FILTER (
+             WHERE jsonb_array_length(COALESCE(meta->'iconsApplied', '[]'::jsonb)) > 0
+           )::int                                          AS icon_applied_generations,
+           COUNT(*) FILTER (
+             WHERE jsonb_array_length(COALESCE(meta->'iconsMissing', '[]'::jsonb)) > 0
+           )::int                                          AS icon_missing_generations,
+           COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconCandidates', '[]'::jsonb))), 0)::bigint
+                                                             AS icon_candidates_total,
+           COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsApplied', '[]'::jsonb))), 0)::bigint
+                                                             AS icons_applied_total,
+           COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsMissing', '[]'::jsonb))), 0)::bigint
+                                                             AS icons_missing_total
          FROM diagram_generations`,
       ),
       query(
@@ -100,10 +115,35 @@ router.get("/generations", async (req, res, next) => {
           ORDER BY count DESC`,
       ),
       query(
+        `SELECT COALESCE(preset, '—') AS preset,
+                COUNT(*)::int AS count,
+                COUNT(*) FILTER (
+                  WHERE jsonb_array_length(COALESCE(meta->'iconCandidates', '[]'::jsonb)) > 0
+                )::int AS with_candidates,
+                COUNT(*) FILTER (
+                  WHERE jsonb_array_length(COALESCE(meta->'iconsApplied', '[]'::jsonb)) > 0
+                )::int AS with_icons,
+                COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsApplied', '[]'::jsonb))), 0)::bigint
+                  AS icons_applied
+           FROM diagram_generations
+          WHERE status = 'completed'
+          GROUP BY preset
+          ORDER BY with_icons DESC, icons_applied DESC, count DESC`,
+      ),
+      query(
         `SELECT g.id, g.preset, g.model, g.status,
                 g.generation_ms, g.first_token_ms, g.diagram_bytes,
                 g.prompt_tokens, g.completion_tokens, g.total_tokens,
                 g.temperature, g.top_p, g.finish_reason, g.error, g.created_at,
+                jsonb_array_length(COALESCE(g.meta->'iconCandidates', '[]'::jsonb))::int
+                  AS icon_candidate_count,
+                jsonb_array_length(COALESCE(g.meta->'iconsApplied', '[]'::jsonb))::int
+                  AS icon_applied_count,
+                jsonb_array_length(COALESCE(g.meta->'iconsMissing', '[]'::jsonb))::int
+                  AS icon_missing_count,
+                COALESCE(g.meta->'iconCandidates', '[]'::jsonb) AS icon_candidates,
+                COALESCE(g.meta->'iconsApplied', '[]'::jsonb) AS icons_applied,
+                COALESCE(g.meta->'iconsMissing', '[]'::jsonb) AS icons_missing,
                 v.title AS viz_title,
                 u.email AS user_email, u.name AS user_name
            FROM diagram_generations g
@@ -117,6 +157,7 @@ router.get("/generations", async (req, res, next) => {
     res.json({
       totals: totals.rows[0],
       byModel: byModel.rows,
+      byPresetIcons: byPresetIcons.rows,
       recent: recent.rows,
     });
   } catch (err) {

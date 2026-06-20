@@ -229,6 +229,7 @@ function Generations() {
           )})`}
         />
         <Stat label="Icons applied" value={fmtNum(totals.icons_applied_total)} />
+        <Stat label="Auto-applied icons" value={fmtNum(totals.icons_auto_applied_total)} />
         <Stat label="Icon misses" value={fmtNum(totals.icons_missing_total)} />
       </div>
 
@@ -273,6 +274,7 @@ function Generations() {
                 <th style={{ textAlign: "right" }}>Lookup</th>
                 <th style={{ textAlign: "right" }}>With icons</th>
                 <th style={{ textAlign: "right" }}>Icons</th>
+                <th style={{ textAlign: "right" }}>Auto</th>
               </tr>
             </thead>
             <tbody>
@@ -287,6 +289,9 @@ function Generations() {
                     {fmtNum(p.with_icons)} ({fmtPct(p.with_icons, p.count)})
                   </td>
                   <td style={{ textAlign: "right" }}>{fmtNum(p.icons_applied)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {fmtNum(p.icons_auto_applied)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -364,10 +369,14 @@ function Generations() {
                       style={{ textAlign: "right" }}
                       title={
                         iconListTitle(g.icons_applied) ||
+                        iconListTitle(g.icons_auto_applied) ||
                         iconListTitle(g.icons_missing)
                       }
                     >
                       {fmtNum(g.icon_applied_count)}
+                      {g.icon_auto_applied_count > 0 && (
+                        <small className="muted"> / {fmtNum(g.icon_auto_applied_count)} auto</small>
+                      )}
                       {g.icon_missing_count > 0 && (
                         <small className="muted"> / {fmtNum(g.icon_missing_count)} miss</small>
                       )}

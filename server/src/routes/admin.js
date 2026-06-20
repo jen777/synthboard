@@ -101,6 +101,8 @@ router.get("/generations", async (req, res, next) => {
                                                              AS icon_candidates_total,
            COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsApplied', '[]'::jsonb))), 0)::bigint
                                                              AS icons_applied_total,
+           COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsAutoApplied', '[]'::jsonb))), 0)::bigint
+                                                             AS icons_auto_applied_total,
            COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsMissing', '[]'::jsonb))), 0)::bigint
                                                              AS icons_missing_total
          FROM diagram_generations`,
@@ -124,7 +126,9 @@ router.get("/generations", async (req, res, next) => {
                   WHERE jsonb_array_length(COALESCE(meta->'iconsApplied', '[]'::jsonb)) > 0
                 )::int AS with_icons,
                 COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsApplied', '[]'::jsonb))), 0)::bigint
-                  AS icons_applied
+                  AS icons_applied,
+                COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsAutoApplied', '[]'::jsonb))), 0)::bigint
+                  AS icons_auto_applied
            FROM diagram_generations
           WHERE status = 'completed'
           GROUP BY preset
@@ -139,10 +143,13 @@ router.get("/generations", async (req, res, next) => {
                   AS icon_candidate_count,
                 jsonb_array_length(COALESCE(g.meta->'iconsApplied', '[]'::jsonb))::int
                   AS icon_applied_count,
+                jsonb_array_length(COALESCE(g.meta->'iconsAutoApplied', '[]'::jsonb))::int
+                  AS icon_auto_applied_count,
                 jsonb_array_length(COALESCE(g.meta->'iconsMissing', '[]'::jsonb))::int
                   AS icon_missing_count,
                 COALESCE(g.meta->'iconCandidates', '[]'::jsonb) AS icon_candidates,
                 COALESCE(g.meta->'iconsApplied', '[]'::jsonb) AS icons_applied,
+                COALESCE(g.meta->'iconsAutoApplied', '[]'::jsonb) AS icons_auto_applied,
                 COALESCE(g.meta->'iconsMissing', '[]'::jsonb) AS icons_missing,
                 v.title AS viz_title,
                 u.email AS user_email, u.name AS user_name

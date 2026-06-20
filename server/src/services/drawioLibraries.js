@@ -2,32 +2,61 @@ import zlib from "node:zlib";
 
 import { query, pool } from "../db.js";
 
-const MAX_PROMPT_OBJECTS = 18;
+const MAX_PROMPT_OBJECTS = 24;
 const MAX_SEARCH_ROWS = 5000;
-const ARCHITECTURE_TERMS = new Set([
-  "api",
-  "app",
+const ICON_SIZE_PRESETS = {
+  small: 0.75,
+  medium: 1,
+  large: 1.35,
+  hero: 1.7,
+};
+const AUTO_ICON_TARGET = 6;
+const AUTO_ICON_MIN_SCORE = 12;
+const AUTO_ICON_MAX_REUSE = 3;
+const GENERAL_ICON_TERMS = [
+  "actor",
   "application",
-  "architecture",
-  "azure",
-  "aws",
-  "cache",
-  "cloud",
-  "cluster",
   "database",
-  "db",
+  "document",
   "event",
-  "gcp",
-  "kubernetes",
-  "lambda",
-  "network",
+  "gateway",
+  "group",
+  "milestone",
+  "process",
   "queue",
-  "redis",
   "service",
   "storage",
-  "topic",
-  "worker",
-]);
+  "system",
+  "team",
+  "user",
+];
+const PRESET_ICON_TERMS = {
+  diagram: ["start", "process", "decision", "document", "user", "system", "task"],
+  uml: ["class", "interface", "object", "package", "component"],
+  sequence: ["actor", "user", "service", "system", "database", "message", "api"],
+  er: ["database", "entity", "table", "relationship", "key", "storage"],
+  mindmap: ["idea", "topic", "concept", "goal", "user", "team", "document"],
+  infographic: ["chart", "metric", "dashboard", "document", "user", "team", "goal"],
+  orgchart: ["person", "user", "team", "group", "manager", "organization"],
+  timeline: ["calendar", "clock", "milestone", "event", "flag", "document"],
+  swimlane: ["user", "team", "process", "task", "document", "system", "decision"],
+  architecture: [
+    "api",
+    "application",
+    "cache",
+    "cloud",
+    "database",
+    "gateway",
+    "queue",
+    "server",
+    "service",
+    "storage",
+  ],
+  state: ["state", "start", "stop", "event", "process", "system"],
+  venn: ["group", "set", "team", "user", "overlap", "concept"],
+  fishbone: ["problem", "cause", "process", "team", "tool", "document"],
+  kanban: ["task", "card", "board", "user", "team", "ticket", "flag"],
+};
 
 function slugify(value) {
   return String(value || "")
@@ -67,6 +96,10 @@ function decodeXmlEntities(value) {
     .replace(/&amp;/g, "&");
 }
 
+function stripHtml(value) {
+  return decodeXmlEntities(String(value || "").replace(/<[^>]+>/g, " "));
+}
+
 function parseAttributes(tag) {
   const attrs = {};
   const re = /\s([:\w.-]+)="([^"]*)"/g;
@@ -75,6 +108,40 @@ function parseAttributes(tag) {
     attrs[match[1]] = decodeXmlEntities(match[2]);
   }
   return attrs;
+}
+
+function replaceAttribute(tag, name, value) {
+  const attr = `${name}="${xmlAttr(value)}"`;
+  const re = new RegExp(`\\s${name}="[^"]*"`);
+  if (re.test(tag)) return tag.replace(re, ` ${attr}`);
+  return tag.replace(/\s*\/?>$/, (end) => ` ${attr}${end.trim()}`);
+}
+
+function styleEntries(style) {
+  return String(style || "")
+    .split(";")
+    .map((part) => {
+      const index = part.indexOf("=");
+      if (index < 0) return null;
+      return [part.slice(0, index).trim(), part.slice(index + 1).trim()];
+    })
+    .filter(Boolean)
+    .filter(([key]) => Boolean(key));
+}
+
+function styleValue(style, key) {
+  return styleEntries(style).find(([k]) => k === key)?.[1] || null;
+}
+
+function hasStyleKey(style, key) {
+  return styleEntries(style).some(([k]) => k === key);
+}
+
+function boundedNumber(value, { min, max }) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(max, Math.max(min, n));
 }
 
 function parseMxlibraryXml(content) {
@@ -185,7 +252,12 @@ function objectAliases({ title, provider }) {
   const base = words(title);
   const aliases = [...base];
   if (provider) aliases.push(...words(provider));
+  if (base.includes("actor") || base.includes("person")) aliases.push("user");
+  if (base.includes("calendar")) aliases.push("date", "event", "milestone");
   if (base.includes("database")) aliases.push("db", "sql");
+  if (base.includes("document")) aliases.push("file", "note", "page");
+  if (base.includes("gateway")) aliases.push("api", "ingress", "proxy");
+  if (base.includes("server")) aliases.push("service", "compute");
   if (base.includes("storage")) aliases.push("blob", "bucket", "file");
   if (base.includes("queue")) aliases.push("messaging", "event");
   if (base.includes("kubernetes")) aliases.push("k8s", "cluster");
@@ -389,10 +461,18 @@ export async function searchIconObjects(searchText, { limit = MAX_PROMPT_OBJECTS
   return [...sameLibrary, ...fallback].slice(0, limit);
 }
 
+export function buildIconSearchText({ preset, sourceText, title }) {
+  return unique([
+    title,
+    preset,
+    ...(PRESET_ICON_TERMS[preset] || []),
+    ...GENERAL_ICON_TERMS,
+    sourceText,
+  ]).join(" ");
+}
+
 export function shouldUseIconCatalog({ preset, sourceText, title }) {
-  if (preset === "architecture" || preset === "infographic") return true;
-  const terms = words(`${title || ""} ${sourceText || ""}`);
-  return terms.some((term) => ARCHITECTURE_TERMS.has(term));
+  return words(`${title || ""} ${preset || ""} ${sourceText || ""}`).length > 0;
 }
 
 export async function buildIconPromptContext({ preset, sourceText, title }) {
@@ -400,20 +480,25 @@ export async function buildIconPromptContext({ preset, sourceText, title }) {
     return { prompt: "", candidates: [] };
   }
 
-  const candidates = await searchIconObjects(`${title || ""} ${preset} ${sourceText}`);
+  const candidates = await searchIconObjects(
+    buildIconSearchText({ preset, sourceText, title }),
+  );
   if (candidates.length === 0) return { prompt: "", candidates: [] };
 
   const dominant = candidates[0];
-  const lines = candidates.map(
-    (c) =>
-      `- ${c.id}: ${c.title} (${c.provider || c.library_name}, ${c.style_family || "same set"})`,
-  );
+  const lines = candidates.map((c) => {
+    const size =
+      c.width && c.height ? `, native ${Math.round(c.width)}x${Math.round(c.height)}` : "";
+    return `- ${c.id}: ${c.title} (${c.provider || c.library_name}, ${c.style_family || "same set"}${size})`;
+  });
 
   return {
     candidates,
     prompt: `Available draw.io icon set context:
 Prefer one visual set per diagram. Use "${dominant.library_name}" first and only mix sets if a required object is missing.
-When a listed icon fits a node, add synthIcon=<icon id> to that vertex's style. Keep the node label in value. Do not invent icon ids.
+Use icons to make the diagram visually rich: decorate the primary concrete vertices such as services, actors, systems, datastores, queues, teams, tools, documents, milestones, or major concepts. Target 4-10 icon-decorated vertices when enough listed icons fit. Use ordinary shapes for abstract control-flow details that do not match the icon list.
+When a listed icon fits a vertex, add synthIcon=<icon id> to that vertex's style. Keep the node label in value. Do not invent icon ids.
+You may request icon size in the same style with synthIconSize=small|medium|large|hero, synthIconScale=0.5-2.5, or explicit synthIconWidth=<px>;synthIconHeight=<px>. Use larger icons for central/primary concepts and smaller icons for supporting nodes.
 Icon ids:
 ${lines.join("\n")}`,
   };
@@ -435,9 +520,64 @@ function cleanRequestedIconStyle(style) {
     .filter((part) => {
       if (!part) return false;
       const key = part.split("=")[0]?.trim();
-      return key && key !== "synthIcon" && !blockedKeys.has(key);
+      return key && !key.startsWith("synthIcon") && !blockedKeys.has(key);
     })
     .join(";");
+}
+
+function requestedIconSize(requestedStyle, icon) {
+  const baseWidth = boundedNumber(icon.width, { min: 24, max: 320 }) || 96;
+  const baseHeight = boundedNumber(icon.height, { min: 24, max: 240 }) || 72;
+  const aspect = baseWidth / baseHeight || 1;
+
+  const preset = styleValue(requestedStyle, "synthIconSize")?.toLowerCase();
+  const presetScale = ICON_SIZE_PRESETS[preset] || null;
+  const explicitScale = boundedNumber(styleValue(requestedStyle, "synthIconScale"), {
+    min: 0.35,
+    max: 3,
+  });
+  const scale = explicitScale || presetScale;
+
+  let width = boundedNumber(styleValue(requestedStyle, "synthIconWidth"), {
+    min: 24,
+    max: 360,
+  });
+  let height = boundedNumber(styleValue(requestedStyle, "synthIconHeight"), {
+    min: 24,
+    max: 280,
+  });
+
+  if (!width && !height && !scale) return null;
+
+  if (!width && !height) {
+    width = baseWidth * scale;
+    height = baseHeight * scale;
+  } else if (width && !height) {
+    height = width / aspect;
+  } else if (!width && height) {
+    width = height * aspect;
+  }
+
+  return {
+    width: Math.round(boundedNumber(width, { min: 24, max: 360 })),
+    height: Math.round(boundedNumber(height, { min: 24, max: 280 })),
+  };
+}
+
+function applyGeometrySize(cellXml, size) {
+  if (!size) return cellXml;
+  const withGeometry = String(cellXml).replace(/<mxGeometry\b[^>]*\/?>/i, (tag) => {
+    let nextTag = replaceAttribute(tag, "width", size.width);
+    nextTag = replaceAttribute(nextTag, "height", size.height);
+    return nextTag;
+  });
+  if (withGeometry !== cellXml) return withGeometry;
+
+  const geometry = `<mxGeometry width="${size.width}" height="${size.height}" as="geometry" />`;
+  if (/^<mxCell\b[^>]*\/>$/i.test(cellXml.trim())) {
+    return cellXml.replace(/\s*\/>$/i, `>\n  ${geometry}\n</mxCell>`);
+  }
+  return cellXml.replace(/<\/mxCell>$/i, `\n  ${geometry}\n</mxCell>`);
 }
 
 function mergedIconStyle(iconStyle, requestedStyle) {
@@ -449,43 +589,143 @@ function mergedIconStyle(iconStyle, requestedStyle) {
 }
 
 export async function applyIconPlaceholders(xml) {
-  const ids = unique(
+  return applyIconEnhancements(xml);
+}
+
+export async function applyIconEnhancements(xml, { candidateIds = [] } = {}) {
+  const placeholderIds = unique(
     [...String(xml || "").matchAll(/synthIcon=([^;"&<\s]+)/g)].map((m) => m[1]),
   );
-  if (ids.length === 0) return { xml, applied: [], missing: [] };
+  const ids = unique([...placeholderIds, ...candidateIds]);
+  if (ids.length === 0) return { xml, applied: [], missing: [], autoApplied: [] };
 
   const { rows } = await query(
-    `SELECT id, title, style, width, height
+    `SELECT id, title, search_text, style, width, height
        FROM drawio_icon_objects
       WHERE id = ANY($1)`,
     [ids],
   );
+  return applyIconRowsToXml(xml, rows, {
+    candidateIds,
+    targetApplied: candidateIds.length > 0 ? AUTO_ICON_TARGET : placeholderIds.length,
+  });
+}
+
+function scoreIconForLabel(icon, label) {
+  const labelTerms = unique(words(label));
+  if (labelTerms.length === 0) return 0;
+
+  const title = String(icon.title || "").toLowerCase();
+  const searchText = String(icon.search_text || icon.title || "").toLowerCase();
+  const titleTerms = unique(words(icon.title));
+  let score = 0;
+
+  if (title && stripHtml(label).toLowerCase().includes(title)) score += 30;
+  if (titleTerms.length > 0 && titleTerms.every((term) => labelTerms.includes(term))) {
+    score += 24;
+  }
+
+  for (const term of labelTerms) {
+    if (titleTerms.includes(term)) score += 10;
+    else if (title.includes(term)) score += 7;
+    else if (searchText.includes(term)) score += 4;
+  }
+
+  return score;
+}
+
+function candidateRows(rows, candidateIds) {
+  if (!candidateIds?.length) return [];
   const byId = new Map(rows.map((row) => [row.id, row]));
+  return candidateIds.map((id) => byId.get(id)).filter(Boolean);
+}
+
+function chooseAutoIcon({ attrs, rows, iconUseCounts }) {
+  if (attrs.vertex !== "1") return null;
+  if (hasStyleKey(attrs.style, "shape") && styleValue(attrs.style, "shape") === "image") {
+    return null;
+  }
+
+  const label = stripHtml(attrs.value);
+  if (!label.trim()) return null;
+
+  const [best] = rows
+    .filter((row) => row.style && (iconUseCounts.get(row.id) || 0) < AUTO_ICON_MAX_REUSE)
+    .map((row) => ({ row, score: scoreIconForLabel(row, label) }))
+    .filter(({ score }) => score >= AUTO_ICON_MIN_SCORE)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (iconUseCounts.get(a.row.id) || 0) - (iconUseCounts.get(b.row.id) || 0) ||
+        a.row.title.localeCompare(b.row.title),
+    );
+
+  return best?.row || null;
+}
+
+export function applyIconRowsToXml(
+  xml,
+  rows,
+  { candidateIds = [], targetApplied = AUTO_ICON_TARGET } = {},
+) {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const autoCandidates = candidateRows(rows, candidateIds);
+  const iconUseCounts = new Map();
   const applied = [];
+  const autoApplied = [];
   const missing = [];
 
-  const nextXml = String(xml).replace(/<mxCell\b[^>]*>/g, (tag) => {
-    const attrs = parseAttributes(tag);
-    const match = String(attrs.style || "").match(/(?:^|;)synthIcon=([^;]+)/);
-    if (!match) return tag;
+  const nextXml = String(xml).replace(
+    /<mxCell\b[^>]*?(?:\/>|>[\s\S]*?<\/mxCell>)/g,
+    (cellXml) => {
+      const openTag = cellXml.match(/^<mxCell\b[^>]*?(?:\/>|>)/i)?.[0];
+      if (!openTag) return cellXml;
 
-    const iconId = match[1];
-    const icon = byId.get(iconId);
-    if (!icon?.style) {
-      missing.push(iconId);
-      return tag.replace(
-        /style="[^"]*"/,
-        `style="${xmlAttr(cleanRequestedIconStyle(attrs.style))}"`,
-      );
-    }
+      const attrs = parseAttributes(openTag);
+      const match = String(attrs.style || "").match(/(?:^|;)synthIcon=([^;]+)/);
+      let icon = null;
+      let auto = false;
 
-    applied.push({ id: icon.id, title: icon.title });
-    const style = mergedIconStyle(icon.style, attrs.style);
-    if (/\sstyle="[^"]*"/.test(tag)) {
-      return tag.replace(/\sstyle="[^"]*"/, ` style="${xmlAttr(style)}"`);
-    }
-    return tag.replace(/>$/, ` style="${xmlAttr(style)}">`);
-  });
+      if (match) {
+        const iconId = match[1];
+        icon = byId.get(iconId);
+        if (!icon?.style) {
+          missing.push(iconId);
+          const cleanedTag = replaceAttribute(
+            openTag,
+            "style",
+            cleanRequestedIconStyle(attrs.style),
+          );
+          return cellXml.replace(openTag, cleanedTag);
+        }
+      } else if (applied.length < targetApplied && autoCandidates.length > 0) {
+        icon = chooseAutoIcon({ attrs, rows: autoCandidates, iconUseCounts });
+        auto = Boolean(icon);
+      }
 
-  return { xml: nextXml, applied, missing: unique(missing) };
+      if (!icon?.style) return cellXml;
+
+      applied.push({ id: icon.id, title: icon.title });
+      iconUseCounts.set(icon.id, (iconUseCounts.get(icon.id) || 0) + 1);
+      if (auto) {
+        autoApplied.push({
+          id: icon.id,
+          title: icon.title,
+          label: stripHtml(attrs.value),
+        });
+      }
+
+      const style = mergedIconStyle(icon.style, attrs.style);
+      const size =
+        requestedIconSize(attrs.style, icon) ||
+        (auto ? requestedIconSize("synthIconSize=medium", icon) : null);
+      const sizedCell = applyGeometrySize(cellXml, size);
+      const nextOpenTag =
+        sizedCell.match(/^<mxCell\b[^>]*?(?:\/>|>)/i)?.[0] || openTag;
+      const styledTag = replaceAttribute(nextOpenTag, "style", style);
+      return sizedCell.replace(nextOpenTag, styledTag);
+    },
+  );
+
+  return { xml: nextXml, applied, missing: unique(missing), autoApplied };
 }

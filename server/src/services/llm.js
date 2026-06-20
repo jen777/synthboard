@@ -3,7 +3,7 @@ import { config } from "../config.js";
 import { getSetting } from "./settings.js";
 import { PRESETS } from "./presets.js";
 import {
-  applyIconPlaceholders,
+  applyIconEnhancements,
   buildIconPromptContext,
 } from "./drawioLibraries.js";
 
@@ -50,6 +50,7 @@ OUTPUT CONTRACT — follow exactly:
 - Provide explicit geometry (mxGeometry x/y/width/height) for every vertex so the diagram renders without auto-layout. Avoid overlapping shapes; leave generous spacing.
 - Use readable labels derived from the user's content. Never invent facts that aren't supported by the input; if the input is sparse, produce a faithful, minimal diagram.
 - Use tasteful styling (fill colors, rounded corners, font sizes) appropriate to the diagram type.
+- Make diagrams presentation-ready: use meaningful colors, varied shapes, containers, and visual hierarchy. When icon/object context is provided, use matching library icons on important concrete nodes and leave enough geometry for them to render cleanly.
 
 Example skeleton (structure only — adapt content, styles, and geometry):
 <mxfile host="synthboard">
@@ -72,6 +73,19 @@ Example skeleton (structure only — adapt content, styles, and geometry):
   </diagram>
 </mxfile>`;
 
+const VISUAL_DESIGN_GUIDANCE = `Visual design requirements:
+- Build a polished diagram, not a plain wireframe. Use a restrained but visible palette with 3-5 complementary colors, consistent stroke colors, and high text contrast.
+- Use diagram-appropriate shapes and objects: containers/boundaries for groups, cylinders for data stores, diamonds for decisions, cards/sections for summaries, lanes/columns where useful, and icon/image vertices when library context is available.
+- Make hierarchy obvious with larger primary nodes, smaller supporting nodes, section headers, whitespace, and aligned rows/columns. Avoid overlapping text, icons, or connectors.
+- When icon context is available, use icons for important concrete nodes and choose sizes intentionally with synthIconSize, synthIconScale, synthIconWidth, or synthIconHeight when a default size would be too small or too large.`;
+const VISUAL_PALETTE = [
+  { fillColor: "#eaf2ff", strokeColor: "#5b7cfa" },
+  { fillColor: "#e8fbf8", strokeColor: "#14b8a6" },
+  { fillColor: "#fff7e6", strokeColor: "#f59e0b" },
+  { fillColor: "#f5edff", strokeColor: "#8b5cf6" },
+  { fillColor: "#eef9ff", strokeColor: "#0ea5e9" },
+];
+
 // Pull the <mxfile>…</mxfile> (or bare <mxGraphModel>) out of the model output,
 // tolerating accidental code fences or surrounding prose.
 function extractDrawioXml(text) {
@@ -91,6 +105,122 @@ function extractDrawioXml(text) {
     return `<mxfile host="synthboard"><diagram id="d1" name="Page-1">${model[0]}</diagram></mxfile>`;
   }
   return null;
+}
+
+function xmlAttr(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function decodeXmlEntities(value) {
+  return String(value || "")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function parseXmlAttributes(tag) {
+  const attrs = {};
+  const re = /\s([:\w.-]+)="([^"]*)"/g;
+  let match;
+  while ((match = re.exec(tag))) {
+    attrs[match[1]] = decodeXmlEntities(match[2]);
+  }
+  return attrs;
+}
+
+function styleEntries(style) {
+  return String(style || "")
+    .split(";")
+    .map((part) => {
+      const index = part.indexOf("=");
+      if (index < 0) return null;
+      return [part.slice(0, index).trim(), part.slice(index + 1).trim()];
+    })
+    .filter(Boolean)
+    .filter(([key]) => Boolean(key));
+}
+
+function styleValue(style, key) {
+  return styleEntries(style).find(([k]) => k === key)?.[1] || null;
+}
+
+function hasStyleKey(style, key) {
+  return styleEntries(style).some(([k]) => k === key);
+}
+
+function withStyleDefaults(style, defaults) {
+  const entries = styleEntries(style);
+  const nextEntries = [...entries];
+  let added = 0;
+  for (const [key, value] of Object.entries(defaults)) {
+    if (!hasStyleKey(style, key)) {
+      nextEntries.push([key, value]);
+      added++;
+    }
+  }
+  return {
+    style: nextEntries.map(([key, value]) => `${key}=${value}`).join(";"),
+    added,
+  };
+}
+
+function replaceStyleAttribute(tag, style) {
+  const attr = `style="${xmlAttr(style)}"`;
+  if (/\sstyle="[^"]*"/.test(tag)) return tag.replace(/\sstyle="[^"]*"/, ` ${attr}`);
+  return tag.replace(/\s*\/?>$/, (end) => ` ${attr}${end.trim()}`);
+}
+
+function isIconStyle(style) {
+  return styleValue(style, "shape") === "image" || hasStyleKey(style, "image");
+}
+
+export function applyVisualDefaults(xml) {
+  let vertexIndex = 0;
+  let applied = 0;
+  const nextXml = String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
+    const attrs = parseXmlAttributes(tag);
+    if (attrs.vertex !== "1") return tag;
+
+    const style = attrs.style || "";
+    if (isIconStyle(style)) return tag;
+
+    const palette = VISUAL_PALETTE[vertexIndex % VISUAL_PALETTE.length];
+    vertexIndex++;
+    const result = withStyleDefaults(style, {
+      rounded: "1",
+      whiteSpace: "wrap",
+      html: "1",
+      fillColor: palette.fillColor,
+      strokeColor: palette.strokeColor,
+      fontColor: "#0f172a",
+    });
+    if (result.added === 0) return tag;
+    applied++;
+    return replaceStyleAttribute(tag, result.style);
+  });
+
+  return { xml: nextXml, applied };
+}
+
+export function buildGenerationPrompt({ presetDef, iconPrompt, title, sourceText }) {
+  return `Diagram type: ${presetDef.label}
+${presetDef.guidance}
+
+${VISUAL_DESIGN_GUIDANCE}
+${iconPrompt ? `\n${iconPrompt}\n` : ""}
+
+${title ? `Suggested title: ${title}\n` : ""}Source material to visualize:
+"""
+${sourceText}
+"""
+
+Return only the draw.io <mxfile> XML.`;
 }
 
 /**
@@ -133,16 +263,12 @@ export async function generateDrawio({ preset, sourceText, title, maxSourceChars
     log("icon catalog lookup skipped", { message: err?.message });
   }
 
-  const userPrompt = `Diagram type: ${presetDef.label}
-${presetDef.guidance}
-${iconContext.prompt ? `\n${iconContext.prompt}\n` : ""}
-
-${title ? `Suggested title: ${title}\n` : ""}Source material to visualize:
-"""
-${trimmedSource}
-"""
-
-Return only the draw.io <mxfile> XML.`;
+  const userPrompt = buildGenerationPrompt({
+    presetDef,
+    iconPrompt: iconContext.prompt,
+    title,
+    sourceText: trimmedSource,
+  });
 
   const model = getSetting("llm_model") || config.llm.model;
   const maxTokens = getSetting("llm_max_tokens") || config.llm.maxTokens;
@@ -234,20 +360,34 @@ Return only the draw.io <mxfile> XML.`;
   }
 
   let xml = extractedXml;
-  let iconMeta = { applied: [], missing: [] };
+  let iconMeta = { applied: [], missing: [], autoApplied: [] };
   try {
-    const processed = await applyIconPlaceholders(extractedXml);
+    const processed = await applyIconEnhancements(extractedXml, {
+      candidateIds: iconContext.candidates.map((c) => c.id),
+    });
     xml = processed.xml;
-    iconMeta = { applied: processed.applied, missing: processed.missing };
-    if (processed.applied.length > 0 || processed.missing.length > 0) {
+    iconMeta = {
+      applied: processed.applied,
+      missing: processed.missing,
+      autoApplied: processed.autoApplied || [],
+    };
+    if (
+      processed.applied.length > 0 ||
+      processed.missing.length > 0 ||
+      processed.autoApplied?.length > 0
+    ) {
       log("icon placeholders processed", {
         applied: processed.applied.length,
+        autoApplied: processed.autoApplied?.length || 0,
         missing: processed.missing.length,
       });
     }
   } catch (err) {
     log("icon postprocess skipped", { message: err?.message });
   }
+
+  const visualDefaults = applyVisualDefaults(xml);
+  xml = visualDefaults.xml;
 
   log("✓ extracted XML", { xmlChars: xml.length });
 
@@ -261,8 +401,10 @@ Return only the draw.io <mxfile> XML.`;
     finishReason,
     chunks,
     diagramBytes: Buffer.byteLength(xml, "utf8"),
+    visualDefaultsApplied: visualDefaults.applied,
     iconCandidates: iconContext.candidates.map((c) => c.id),
     iconsApplied: iconMeta.applied,
+    iconsAutoApplied: iconMeta.autoApplied,
     iconsMissing: iconMeta.missing,
   };
 

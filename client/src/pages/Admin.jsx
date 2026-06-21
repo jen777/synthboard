@@ -168,10 +168,40 @@ function iconListTitle(items) {
   return items
     .map((item) => {
       if (typeof item === "string") return item;
-      return item?.title ? `${item.title} (${item.id})` : item?.id;
+      if (!item?.title) return item?.id;
+      const source = [item.provider, item.library].filter(Boolean).join(" / ");
+      const size = item.width && item.height ? `${item.width}x${item.height}` : "";
+      const meta = [item.id, source, item.styleFamily, size].filter(Boolean).join(", ");
+      return meta ? `${item.title} (${meta})` : item.title;
     })
     .filter(Boolean)
     .join("\n");
+}
+
+function generationQualityFlags(g) {
+  if (g.status === "failed") return ["failed"];
+
+  const vertices = Number(g.visual_vertex_count || 0);
+  const iconCoverage = vertices
+    ? Number(g.visual_icon_vertex_count || 0) / vertices
+    : 0;
+  const styledCoverage = vertices
+    ? Number(g.visual_styled_vertex_count || 0) / vertices
+    : 0;
+  const flags = [];
+
+  if (Number(g.icon_candidate_count || 0) > 0 && iconCoverage < 0.2) {
+    flags.push("low icon coverage");
+  }
+  if (vertices > 0 && styledCoverage < 0.6) flags.push("low styled coverage");
+  if (vertices >= 4 && Number(g.visual_fill_color_count || 0) < 2) {
+    flags.push("low color variety");
+  }
+  if (vertices >= 4 && Number(g.visual_shape_type_count || 0) < 2) {
+    flags.push("low shape variety");
+  }
+
+  return flags;
 }
 
 function Generations() {
@@ -231,6 +261,30 @@ function Generations() {
         <Stat label="Icons applied" value={fmtNum(totals.icons_applied_total)} />
         <Stat label="Auto-applied icons" value={fmtNum(totals.icons_auto_applied_total)} />
         <Stat label="Icon misses" value={fmtNum(totals.icons_missing_total)} />
+        <Stat
+          label="Visual defaults used"
+          value={`${fmtNum(totals.visual_default_generations)} (${fmtPct(
+            totals.visual_default_generations,
+            completed,
+          )})`}
+        />
+        <Stat label="Styled fallback nodes" value={fmtNum(totals.visual_defaults_total)} />
+        <Stat
+          label="Icon coverage"
+          value={`${fmtNum(totals.visual_icon_vertices_total)} (${fmtPct(
+            totals.visual_icon_vertices_total,
+            totals.visual_vertices_total,
+          )})`}
+        />
+        <Stat
+          label="Styled coverage"
+          value={`${fmtNum(totals.visual_styled_vertices_total)} (${fmtPct(
+            totals.visual_styled_vertices_total,
+            totals.visual_vertices_total,
+          )})`}
+        />
+        <Stat label="Avg fill colors" value={fmtNum(totals.avg_visual_fill_colors)} />
+        <Stat label="Avg shape types" value={fmtNum(totals.avg_visual_shape_types)} />
       </div>
 
       <div className="card stack">
@@ -275,6 +329,10 @@ function Generations() {
                 <th style={{ textAlign: "right" }}>With icons</th>
                 <th style={{ textAlign: "right" }}>Icons</th>
                 <th style={{ textAlign: "right" }}>Auto</th>
+                <th style={{ textAlign: "right" }}>Styled</th>
+                <th style={{ textAlign: "right" }}>Icon coverage</th>
+                <th style={{ textAlign: "right" }}>Avg colors</th>
+                <th style={{ textAlign: "right" }}>Avg shapes</th>
               </tr>
             </thead>
             <tbody>
@@ -291,6 +349,18 @@ function Generations() {
                   <td style={{ textAlign: "right" }}>{fmtNum(p.icons_applied)}</td>
                   <td style={{ textAlign: "right" }}>
                     {fmtNum(p.icons_auto_applied)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {fmtNum(p.visual_defaults_applied)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {fmtPct(p.visual_icon_vertices, p.visual_vertices)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {fmtNum(p.avg_visual_fill_colors)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {fmtNum(p.avg_visual_shape_types)}
                   </td>
                 </tr>
               ))}
@@ -321,10 +391,15 @@ function Generations() {
                   <th style={{ textAlign: "right" }}>Size</th>
                   <th style={{ textAlign: "right" }}>Icon lookup</th>
                   <th style={{ textAlign: "right" }}>Icons used</th>
+                  <th style={{ textAlign: "right" }}>Icon coverage</th>
+                  <th style={{ textAlign: "right" }}>Styled</th>
+                  <th>Quality</th>
                 </tr>
               </thead>
               <tbody>
-                {recent.map((g) => (
+                {recent.map((g) => {
+                  const qualityFlags = generationQualityFlags(g);
+                  return (
                   <tr key={g.id}>
                     <td title={new Date(g.created_at).toLocaleString()}>
                       {new Date(g.created_at).toLocaleDateString()}
@@ -381,8 +456,36 @@ function Generations() {
                         <small className="muted"> / {fmtNum(g.icon_missing_count)} miss</small>
                       )}
                     </td>
+                    <td style={{ textAlign: "right" }}>
+                      {fmtPct(g.visual_icon_vertex_count, g.visual_vertex_count)}
+                    </td>
+                    <td
+                      style={{ textAlign: "right" }}
+                      title={`${fmtNum(g.visual_vertex_count)} vertices, ${fmtNum(
+                        g.visual_icon_vertex_count,
+                      )} icon/image nodes, ${fmtNum(
+                        g.visual_styled_vertex_count,
+                      )} styled nodes, ${fmtNum(
+                        g.visual_fill_color_count,
+                      )} fill colors, ${fmtNum(g.visual_shape_type_count)} shape types`}
+                    >
+                      {fmtNum(g.visual_defaults_applied)}
+                    </td>
+                    <td title={qualityFlags.join("\n")}>
+                      {qualityFlags.length === 0 ? (
+                        <span className="pill">ok</span>
+                      ) : (
+                        <span
+                          className="pill"
+                          style={{ color: "var(--danger, #e5484d)" }}
+                        >
+                          review
+                        </span>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

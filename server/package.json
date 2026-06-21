@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "node --test",
-    "ingest:drawio-libraries": "node scripts/ingest-drawio-libraries.js"
+    "ingest:drawio-libraries": "node scripts/ingest-drawio-libraries.js",
+    "verify:drawio-enrichment": "node scripts/verify-drawio-enrichment.js"
   },
   "engines": {
     "node": ">=20"

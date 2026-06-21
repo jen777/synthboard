@@ -104,7 +104,30 @@ router.get("/generations", async (req, res, next) => {
            COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsAutoApplied', '[]'::jsonb))), 0)::bigint
                                                              AS icons_auto_applied_total,
            COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsMissing', '[]'::jsonb))), 0)::bigint
-                                                             AS icons_missing_total
+                                                             AS icons_missing_total,
+           COUNT(*) FILTER (
+             WHERE COALESCE((meta->>'visualDefaultsApplied')::int, 0) > 0
+           )::int                                          AS visual_default_generations,
+           COALESCE(SUM(COALESCE((meta->>'visualDefaultsApplied')::int, 0)), 0)::bigint
+                                                             AS visual_defaults_total,
+           COALESCE(SUM(COALESCE((meta#>>'{visualSummary,vertexCount}')::int, 0)), 0)::bigint
+                                                             AS visual_vertices_total,
+           COALESCE(SUM(COALESCE((meta#>>'{visualSummary,iconVertexCount}')::int, 0)), 0)::bigint
+                                                             AS visual_icon_vertices_total,
+           COALESCE(SUM(COALESCE((meta#>>'{visualSummary,styledVertexCount}')::int, 0)), 0)::bigint
+                                                             AS visual_styled_vertices_total,
+           ROUND(
+             AVG((meta#>>'{visualSummary,fillColorCount}')::numeric)
+             FILTER (WHERE meta#>'{visualSummary}' IS NOT NULL),
+             1
+           )
+                                                             AS avg_visual_fill_colors,
+           ROUND(
+             AVG((meta#>>'{visualSummary,shapeTypeCount}')::numeric)
+             FILTER (WHERE meta#>'{visualSummary}' IS NOT NULL),
+             1
+           )
+                                                             AS avg_visual_shape_types
          FROM diagram_generations`,
       ),
       query(
@@ -128,7 +151,27 @@ router.get("/generations", async (req, res, next) => {
                 COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsApplied', '[]'::jsonb))), 0)::bigint
                   AS icons_applied,
                 COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsAutoApplied', '[]'::jsonb))), 0)::bigint
-                  AS icons_auto_applied
+                  AS icons_auto_applied,
+                COALESCE(SUM(COALESCE((meta->>'visualDefaultsApplied')::int, 0)), 0)::bigint
+                  AS visual_defaults_applied,
+                COALESCE(SUM(COALESCE((meta#>>'{visualSummary,vertexCount}')::int, 0)), 0)::bigint
+                  AS visual_vertices,
+                COALESCE(SUM(COALESCE((meta#>>'{visualSummary,iconVertexCount}')::int, 0)), 0)::bigint
+                  AS visual_icon_vertices,
+                COALESCE(SUM(COALESCE((meta#>>'{visualSummary,styledVertexCount}')::int, 0)), 0)::bigint
+                  AS visual_styled_vertices,
+                ROUND(
+                  AVG((meta#>>'{visualSummary,fillColorCount}')::numeric)
+                  FILTER (WHERE meta#>'{visualSummary}' IS NOT NULL),
+                  1
+                )
+                  AS avg_visual_fill_colors,
+                ROUND(
+                  AVG((meta#>>'{visualSummary,shapeTypeCount}')::numeric)
+                  FILTER (WHERE meta#>'{visualSummary}' IS NOT NULL),
+                  1
+                )
+                  AS avg_visual_shape_types
            FROM diagram_generations
           WHERE status = 'completed'
           GROUP BY preset
@@ -147,6 +190,18 @@ router.get("/generations", async (req, res, next) => {
                   AS icon_auto_applied_count,
                 jsonb_array_length(COALESCE(g.meta->'iconsMissing', '[]'::jsonb))::int
                   AS icon_missing_count,
+                COALESCE((g.meta->>'visualDefaultsApplied')::int, 0)::int
+                  AS visual_defaults_applied,
+                COALESCE((g.meta#>>'{visualSummary,vertexCount}')::int, 0)::int
+                  AS visual_vertex_count,
+                COALESCE((g.meta#>>'{visualSummary,iconVertexCount}')::int, 0)::int
+                  AS visual_icon_vertex_count,
+                COALESCE((g.meta#>>'{visualSummary,styledVertexCount}')::int, 0)::int
+                  AS visual_styled_vertex_count,
+                COALESCE((g.meta#>>'{visualSummary,fillColorCount}')::int, 0)::int
+                  AS visual_fill_color_count,
+                COALESCE((g.meta#>>'{visualSummary,shapeTypeCount}')::int, 0)::int
+                  AS visual_shape_type_count,
                 COALESCE(g.meta->'iconCandidates', '[]'::jsonb) AS icon_candidates,
                 COALESCE(g.meta->'iconsApplied', '[]'::jsonb) AS icons_applied,
                 COALESCE(g.meta->'iconsAutoApplied', '[]'::jsonb) AS icons_auto_applied,

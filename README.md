@@ -125,11 +125,79 @@ npm run ingest:drawio-libraries -- --manifest ./drawio-libraries/sources.example
 ```
 
 The ingester stores compact searchable metadata plus the exact draw.io object
-styles in Postgres. During generation, the server retrieves a small candidate
-set, asks the LLM to add `synthIcon=<icon id>` to matching vertex styles, then
-post-processes the final XML and replaces those placeholders with the exact
-draw.io image styles. If no catalog exists or no match is found, generation
-falls back to ordinary draw.io shapes.
+styles in Postgres. During generation, the server retrieves a candidate set for
+the requested preset, title, and source text, asks the LLM to add
+`synthIcon=<icon id>` to matching vertex styles, then post-processes the final
+XML and replaces those placeholders with the exact draw.io image styles. The LLM
+can also request size changes with `synthIconSize=small|medium|large|hero`,
+`synthIconScale=0.5-2.5`, or explicit `synthIconWidth=<px>` and
+`synthIconHeight=<px>` style keys. Width-only and height-only requests preserve
+the object's native aspect ratio. When an icon is selected without a size
+request, the post-processor applies the object's native medium geometry so the
+library visual is not stretched into a generic model-generated rectangle.
+
+The search query also expands common user wording such as "API", "DB", "web
+app", "auth", "serverless job", "event hub", and "blob bucket" so existing
+catalogs are easier to match. Reingest libraries after changing alias/search
+logic so stored object metadata gets refreshed as well.
+Catalog lookup uses broad OR-style full-text matching and then ranks the
+resulting candidates against the expanded terms, so a long prompt can still
+retrieve useful partial matches without requiring every concept to appear in one
+library object. If a term cannot safely participate in full-text syntax, the
+lookup still falls back to substring matching for the same candidate search.
+The generation prompt describes candidates as icon/object library entries,
+including image icons and draw.io stencil/object styles, and tells the model to
+use `synthIcon=<object id>` so the server can apply the exact stored style.
+
+If the model underuses the available catalog, the post-processor makes a bounded
+best-effort pass over non-image vertices and auto-applies matching candidate
+icons by label. If no catalog exists or no match is found, generation falls back
+to ordinary draw.io shapes. A second visual-default pass adds missing fill,
+stroke, text, and rounded-corner styles to plain non-icon vertices so sparse
+model output still renders as a colored, presentation-ready diagram. It also
+infers common draw.io shapes for unmatched non-icon labels, such as cylinders
+for databases/storage, rhombuses for decisions, document shapes for files, and
+hexagons for queues/events, actor shapes for users/people, and ellipses for
+teams/groups.
+
+Generation runs these enrichment stages as one server-side post-processing
+pipeline: explicit icon replacement, automatic icon fallback, visual defaults,
+shape inference, and final visual-summary telemetry.
+Exact library object styles such as `shape=mxgraph...` are preserved without
+generic fill/stroke defaults and counted as library visual objects in summary
+metrics. They also count toward styled coverage, because the library style is
+the presentation styling for those nodes.
+Automatic icon fallback also skips existing library object styles so it does
+not replace a model-selected stencil with a different image icon.
+Malformed icon placeholders on non-vertex cells are stripped instead of being
+applied, so an accidental `synthIcon` on an edge cannot turn the connector into
+an image object. Missing or malformed placeholders keep the cell's ordinary
+styling while removing only `synthIcon*` keys.
+
+To verify that pipeline locally without LLM or database credentials, run:
+
+```bash
+npm run verify:drawio-enrichment
+```
+
+The command processes sample draw.io XML with sample icon rows and fails if
+explicit icon replacement, auto-apply, icon sizing, fallback shapes, or visual
+summary telemetry regress.
+
+Admins can inspect generation behavior in **Admin panel → Generation report**.
+The icon metrics show when catalog lookup happened, how many icons were applied
+from explicit model placeholders, how many were auto-applied by the server, and
+which placeholders missed. Candidate hover details include the offered object
+title, provider/library, style family, and native size. The visual-default
+metrics show when the server had to style otherwise plain nodes after
+generation. The visual summary metrics count final vertices, icon/image nodes,
+styled nodes, distinct fill colors, and distinct shape types. Icon coverage and
+styled coverage are the fastest effectiveness checks: they show whether the
+final rendered XML is actually using library visuals and presentation styling,
+not just producing valid XML.
+Recent generations also show a Quality flag when the final XML has low icon
+coverage despite candidates, low styled-node coverage, low color variety, or low
+shape variety.
 
 Admins can also use the API directly: `GET /api/admin/icon-libraries`,
 `GET /api/admin/icon-libraries/:id/objects`,

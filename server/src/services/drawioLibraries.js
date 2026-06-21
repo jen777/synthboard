@@ -57,6 +57,30 @@ const PRESET_ICON_TERMS = {
   fishbone: ["problem", "cause", "process", "team", "tool", "document"],
   kanban: ["task", "card", "board", "user", "team", "ticket", "flag"],
 };
+const LABEL_ICON_ALIASES = {
+  api: ["gateway", "service"],
+  app: ["application", "service"],
+  apps: ["application", "service"],
+  auth: ["identity", "user"],
+  bucket: ["storage"],
+  db: ["database", "storage"],
+  event: ["queue", "message"],
+  file: ["document", "storage"],
+  job: ["worker", "process"],
+  k8s: ["kubernetes", "cluster"],
+  login: ["user", "identity"],
+  message: ["queue", "event"],
+  messaging: ["queue", "event"],
+  person: ["user", "actor"],
+  proxy: ["gateway", "api"],
+  repo: ["repository", "storage"],
+  server: ["service", "compute"],
+  serverless: ["function", "job", "compute"],
+  svc: ["service"],
+  vm: ["virtual", "machine", "compute"],
+  web: ["application", "service"],
+  worker: ["process", "service"],
+};
 
 function slugify(value) {
   return String(value || "")
@@ -248,20 +272,51 @@ function resolveObjectIdCollisions(objects) {
   return { objects: resolved, duplicatesIgnored, variantsCreated };
 }
 
-function objectAliases({ title, provider }) {
+export function buildObjectAliases({ title, provider }) {
   const base = words(title);
   const aliases = [...base];
   if (provider) aliases.push(...words(provider));
+  if (base.includes("active") && base.includes("directory")) {
+    aliases.push("identity", "auth", "login", "user");
+  }
+  if (base.includes("application")) aliases.push("app", "web", "service");
   if (base.includes("actor") || base.includes("person")) aliases.push("user");
+  if (base.includes("api")) aliases.push("gateway", "service", "endpoint");
+  if (base.includes("app") && base.includes("service")) {
+    aliases.push("application", "web", "server");
+  }
+  if (base.includes("blob")) aliases.push("storage", "bucket", "file");
+  if (base.includes("bus")) aliases.push("queue", "messaging", "event");
+  if (base.includes("cache")) aliases.push("redis", "memory");
   if (base.includes("calendar")) aliases.push("date", "event", "milestone");
+  if (base.includes("cdn")) aliases.push("edge", "cache", "network");
+  if (base.includes("container")) aliases.push("docker", "compute", "service");
+  if (base.includes("cosmos")) aliases.push("database", "db", "nosql");
   if (base.includes("database")) aliases.push("db", "sql");
   if (base.includes("document")) aliases.push("file", "note", "page");
+  if (base.includes("dns")) aliases.push("domain", "network");
+  if (base.includes("event")) aliases.push("queue", "message", "messaging");
+  if (base.includes("function")) aliases.push("serverless", "job", "compute");
   if (base.includes("gateway")) aliases.push("api", "ingress", "proxy");
+  if (base.includes("hub")) aliases.push("event", "messaging", "queue");
+  if (base.includes("identity")) aliases.push("auth", "login", "user");
+  if (base.includes("key") && base.includes("vault")) {
+    aliases.push("secret", "security", "certificate");
+  }
+  if (base.includes("load") && base.includes("balancer")) {
+    aliases.push("gateway", "traffic", "network");
+  }
+  if (base.includes("monitor")) aliases.push("observability", "metrics", "logs");
+  if (base.includes("network")) aliases.push("vnet", "subnet");
   if (base.includes("server")) aliases.push("service", "compute");
+  if (base.includes("sql")) aliases.push("database", "db");
   if (base.includes("storage")) aliases.push("blob", "bucket", "file");
   if (base.includes("queue")) aliases.push("messaging", "event");
   if (base.includes("kubernetes")) aliases.push("k8s", "cluster");
   if (base.includes("virtual") && base.includes("machine")) aliases.push("vm");
+  if (base.includes("virtual") && base.includes("network")) {
+    aliases.push("vnet", "subnet", "network");
+  }
   return unique(aliases);
 }
 
@@ -288,7 +343,7 @@ export async function ingestDrawioLibrary({
     .filter((item) => item?.xml)
     .map((item, index) => {
       const details = extractObjectDetails(item);
-      const aliases = objectAliases({ title: details.title, provider });
+      const aliases = buildObjectAliases({ title: details.title, provider });
       const searchText = unique([
         details.title,
         name,
@@ -432,18 +487,32 @@ function chooseDominantLibrary(rows) {
   return [...totals.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 }
 
+export function buildIconQueryTerms(searchText, { limit = 90 } = {}) {
+  return expandLabelTerms(unique(words(searchText)).slice(0, 60)).slice(0, limit);
+}
+
+export function buildIconTsQuery(terms) {
+  return unique(terms)
+    .map((term) => term.replace(/[^a-z0-9]/g, ""))
+    .filter(Boolean)
+    .join(" | ");
+}
+
 export async function searchIconObjects(searchText, { limit = MAX_PROMPT_OBJECTS } = {}) {
-  const terms = unique(words(searchText)).slice(0, 60);
+  const terms = buildIconQueryTerms(searchText);
   if (terms.length === 0) return [];
 
-  const tsQuery = terms.join(" ");
+  const tsQuery = buildIconTsQuery(terms) || null;
   const likeTerms = terms.map((term) => `%${term}%`);
   const { rows } = await query(
     `SELECT o.id, o.library_id, o.title, o.search_text, o.width, o.height,
             l.name AS library_name, l.provider, l.style_family
        FROM drawio_icon_objects o
        JOIN drawio_icon_libraries l ON l.id = o.library_id
-      WHERE to_tsvector('simple', o.search_text) @@ plainto_tsquery('simple', $1)
+      WHERE (
+              $1::text IS NOT NULL
+              AND to_tsvector('simple', o.search_text) @@ to_tsquery('simple', $1)
+            )
          OR o.search_text ILIKE ANY($2)
          OR o.id ILIKE ANY($2)
       LIMIT $3`,
@@ -475,6 +544,25 @@ export function shouldUseIconCatalog({ preset, sourceText, title }) {
   return words(`${title || ""} ${preset || ""} ${sourceText || ""}`).length > 0;
 }
 
+export function buildIconPrompt(candidates) {
+  if (!candidates?.length) return "";
+
+  const dominant = candidates[0];
+  const lines = candidates.map((c) => {
+    const size =
+      c.width && c.height ? `, native ${Math.round(c.width)}x${Math.round(c.height)}` : "";
+    return `- ${c.id}: ${c.title} (${c.provider || c.library_name}, ${c.style_family || "same set"}${size})`;
+  });
+
+  return `Available draw.io icon/object set context:
+Prefer one visual set per diagram. Use "${dominant.library_name}" first and only mix sets if a required object is missing.
+Use the listed library objects to make the diagram visually rich: decorate the primary concrete vertices such as services, actors, systems, datastores, queues, teams, tools, documents, milestones, or major concepts. Target 4-10 library-decorated vertices when enough listed objects fit. Use ordinary shapes for abstract control-flow details that do not match the listed objects.
+Listed objects can be image icons or draw.io object/stencil styles. When a listed object fits a vertex, add synthIcon=<object id> to that vertex's style; the server will replace it with the exact library style. Keep the node label in value. Do not invent object ids.
+You may request object size in the same style with synthIconSize=small|medium|large|hero, synthIconScale=0.5-2.5, or explicit synthIconWidth=<px>;synthIconHeight=<px>. Use larger objects for central/primary concepts and smaller objects for supporting nodes.
+Object ids:
+${lines.join("\n")}`;
+}
+
 export async function buildIconPromptContext({ preset, sourceText, title }) {
   if (!shouldUseIconCatalog({ preset, sourceText, title })) {
     return { prompt: "", candidates: [] };
@@ -485,22 +573,9 @@ export async function buildIconPromptContext({ preset, sourceText, title }) {
   );
   if (candidates.length === 0) return { prompt: "", candidates: [] };
 
-  const dominant = candidates[0];
-  const lines = candidates.map((c) => {
-    const size =
-      c.width && c.height ? `, native ${Math.round(c.width)}x${Math.round(c.height)}` : "";
-    return `- ${c.id}: ${c.title} (${c.provider || c.library_name}, ${c.style_family || "same set"}${size})`;
-  });
-
   return {
     candidates,
-    prompt: `Available draw.io icon set context:
-Prefer one visual set per diagram. Use "${dominant.library_name}" first and only mix sets if a required object is missing.
-Use icons to make the diagram visually rich: decorate the primary concrete vertices such as services, actors, systems, datastores, queues, teams, tools, documents, milestones, or major concepts. Target 4-10 icon-decorated vertices when enough listed icons fit. Use ordinary shapes for abstract control-flow details that do not match the icon list.
-When a listed icon fits a vertex, add synthIcon=<icon id> to that vertex's style. Keep the node label in value. Do not invent icon ids.
-You may request icon size in the same style with synthIconSize=small|medium|large|hero, synthIconScale=0.5-2.5, or explicit synthIconWidth=<px>;synthIconHeight=<px>. Use larger icons for central/primary concepts and smaller icons for supporting nodes.
-Icon ids:
-${lines.join("\n")}`,
+    prompt: buildIconPrompt(candidates),
   };
 }
 
@@ -521,6 +596,17 @@ function cleanRequestedIconStyle(style) {
       if (!part) return false;
       const key = part.split("=")[0]?.trim();
       return key && !key.startsWith("synthIcon") && !blockedKeys.has(key);
+    })
+    .join(";");
+}
+
+function stripSynthIconStyleKeys(style) {
+  return String(style || "")
+    .split(";")
+    .filter((part) => {
+      if (!part) return false;
+      const key = part.split("=")[0]?.trim();
+      return key && !key.startsWith("synthIcon");
     })
     .join(";");
 }
@@ -588,6 +674,16 @@ function mergedIconStyle(iconStyle, requestedStyle) {
     .replace(/^;+|;+$/g, "");
 }
 
+function isExistingLibraryObjectStyle(style) {
+  const shape = styleValue(style, "shape") || "";
+  return (
+    shape === "image" ||
+    hasStyleKey(style, "image") ||
+    shape.startsWith("mxgraph.") ||
+    shape.startsWith("stencil(")
+  );
+}
+
 export async function applyIconPlaceholders(xml) {
   return applyIconEnhancements(xml);
 }
@@ -612,12 +708,13 @@ export async function applyIconEnhancements(xml, { candidateIds = [] } = {}) {
 }
 
 function scoreIconForLabel(icon, label) {
-  const labelTerms = unique(words(label));
+  const labelTerms = expandLabelTerms(words(label));
   if (labelTerms.length === 0) return 0;
 
   const title = String(icon.title || "").toLowerCase();
   const searchText = String(icon.search_text || icon.title || "").toLowerCase();
   const titleTerms = unique(words(icon.title));
+  const searchTerms = unique(words(searchText));
   let score = 0;
 
   if (title && stripHtml(label).toLowerCase().includes(title)) score += 30;
@@ -628,10 +725,20 @@ function scoreIconForLabel(icon, label) {
   for (const term of labelTerms) {
     if (titleTerms.includes(term)) score += 10;
     else if (title.includes(term)) score += 7;
+    else if (searchTerms.includes(term)) score += 12;
     else if (searchText.includes(term)) score += 4;
   }
 
   return score;
+}
+
+function expandLabelTerms(labelTerms) {
+  const expanded = [];
+  for (const term of labelTerms) {
+    expanded.push(term);
+    expanded.push(...(LABEL_ICON_ALIASES[term] || []));
+  }
+  return unique(expanded);
 }
 
 function candidateRows(rows, candidateIds) {
@@ -642,9 +749,7 @@ function candidateRows(rows, candidateIds) {
 
 function chooseAutoIcon({ attrs, rows, iconUseCounts }) {
   if (attrs.vertex !== "1") return null;
-  if (hasStyleKey(attrs.style, "shape") && styleValue(attrs.style, "shape") === "image") {
-    return null;
-  }
+  if (isExistingLibraryObjectStyle(attrs.style)) return null;
 
   const label = stripHtml(attrs.value);
   if (!label.trim()) return null;
@@ -687,6 +792,15 @@ export function applyIconRowsToXml(
       let auto = false;
 
       if (match) {
+        if (attrs.vertex !== "1") {
+          const cleanedTag = replaceAttribute(
+            openTag,
+            "style",
+            stripSynthIconStyleKeys(attrs.style),
+          );
+          return cellXml.replace(openTag, cleanedTag);
+        }
+
         const iconId = match[1];
         icon = byId.get(iconId);
         if (!icon?.style) {
@@ -694,7 +808,7 @@ export function applyIconRowsToXml(
           const cleanedTag = replaceAttribute(
             openTag,
             "style",
-            cleanRequestedIconStyle(attrs.style),
+            stripSynthIconStyleKeys(attrs.style),
           );
           return cellXml.replace(openTag, cleanedTag);
         }
@@ -718,7 +832,7 @@ export function applyIconRowsToXml(
       const style = mergedIconStyle(icon.style, attrs.style);
       const size =
         requestedIconSize(attrs.style, icon) ||
-        (auto ? requestedIconSize("synthIconSize=medium", icon) : null);
+        requestedIconSize("synthIconSize=medium", icon);
       const sizedCell = applyGeometrySize(cellXml, size);
       const nextOpenTag =
         sizedCell.match(/^<mxCell\b[^>]*?(?:\/>|>)/i)?.[0] || openTag;

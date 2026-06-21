@@ -4,6 +4,7 @@ import { getSetting } from "./settings.js";
 import { PRESETS } from "./presets.js";
 import {
   applyIconEnhancements,
+  applyIconRowsToXml,
   buildIconPromptContext,
 } from "./drawioLibraries.js";
 
@@ -180,6 +181,53 @@ function isIconStyle(style) {
   return styleValue(style, "shape") === "image" || hasStyleKey(style, "image");
 }
 
+function isLibraryObjectStyle(style) {
+  const shape = styleValue(style, "shape") || "";
+  return (
+    isIconStyle(style) ||
+    shape.startsWith("mxgraph.") ||
+    shape.startsWith("stencil(")
+  );
+}
+
+function textTerms(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z]+;/g, " ")
+    .replace(/[^a-z0-9+#.]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function inferVertexShape(label) {
+  const terms = new Set(textTerms(decodeXmlEntities(label)));
+  const hasAny = (...values) => values.some((value) => terms.has(value));
+
+  if (hasAny("database", "db", "sql", "storage", "cache", "warehouse")) {
+    return "cylinder";
+  }
+  if (hasAny("decision", "condition", "choice", "if", "gateway", "branch")) {
+    return "rhombus";
+  }
+  if (hasAny("actor", "person", "user", "customer", "admin", "manager")) {
+    return "umlActor";
+  }
+  if (hasAny("team", "group", "organization", "org", "department")) {
+    return "ellipse";
+  }
+  if (hasAny("document", "file", "report", "note", "page", "spec", "contract")) {
+    return "document";
+  }
+  if (hasAny("queue", "message", "event", "bus", "stream", "topic")) {
+    return "hexagon";
+  }
+  if (hasAny("cloud", "cdn", "network", "vnet", "dns", "internet")) {
+    return "cloud";
+  }
+  return null;
+}
+
 export function applyVisualDefaults(xml) {
   let vertexIndex = 0;
   let applied = 0;
@@ -188,11 +236,13 @@ export function applyVisualDefaults(xml) {
     if (attrs.vertex !== "1") return tag;
 
     const style = attrs.style || "";
-    if (isIconStyle(style)) return tag;
+    if (isLibraryObjectStyle(style)) return tag;
 
     const palette = VISUAL_PALETTE[vertexIndex % VISUAL_PALETTE.length];
     vertexIndex++;
+    const shape = hasStyleKey(style, "shape") ? null : inferVertexShape(attrs.value);
     const result = withStyleDefaults(style, {
+      ...(shape ? { shape } : {}),
       rounded: "1",
       whiteSpace: "wrap",
       html: "1",
@@ -206,6 +256,106 @@ export function applyVisualDefaults(xml) {
   });
 
   return { xml: nextXml, applied };
+}
+
+export function summarizeDrawioVisuals(xml) {
+  let vertexCount = 0;
+  let edgeCount = 0;
+  let iconVertexCount = 0;
+  let styledVertexCount = 0;
+  const fillColors = new Set();
+  const strokeColors = new Set();
+  const shapeTypes = new Set();
+
+  String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
+    const attrs = parseXmlAttributes(tag);
+    const style = attrs.style || "";
+
+    if (attrs.edge === "1") {
+      edgeCount++;
+      return tag;
+    }
+    if (attrs.vertex !== "1") return tag;
+
+    vertexCount++;
+    const isLibraryObject = isLibraryObjectStyle(style);
+    if (isLibraryObject) iconVertexCount++;
+
+    const fillColor = styleValue(style, "fillColor");
+    const strokeColor = styleValue(style, "strokeColor");
+    if (fillColor && fillColor !== "none") fillColors.add(fillColor.toLowerCase());
+    if (strokeColor && strokeColor !== "none") {
+      strokeColors.add(strokeColor.toLowerCase());
+    }
+    if (isLibraryObject || fillColor || strokeColor || styleValue(style, "fontColor")) {
+      styledVertexCount++;
+    }
+
+    const shape = styleValue(style, "shape");
+    if (shape) shapeTypes.add(shape.toLowerCase());
+    else if (styleValue(style, "rounded") === "1") shapeTypes.add("rounded");
+    else shapeTypes.add("rectangle");
+
+    return tag;
+  });
+
+  return {
+    vertexCount,
+    edgeCount,
+    iconVertexCount,
+    styledVertexCount,
+    fillColorCount: fillColors.size,
+    strokeColorCount: strokeColors.size,
+    shapeTypeCount: shapeTypes.size,
+    fillColors: [...fillColors].sort(),
+    strokeColors: [...strokeColors].sort(),
+    shapeTypes: [...shapeTypes].sort(),
+  };
+}
+
+export function summarizeIconCandidate(candidate) {
+  return {
+    id: candidate.id,
+    title: candidate.title,
+    library: candidate.library_name,
+    provider: candidate.provider,
+    styleFamily: candidate.style_family,
+    width: candidate.width ?? null,
+    height: candidate.height ?? null,
+  };
+}
+
+export async function postProcessDrawioXml(
+  xml,
+  { iconCandidates = [], iconRows = null } = {},
+) {
+  let nextXml = xml;
+  let iconMeta = { applied: [], missing: [], autoApplied: [] };
+  try {
+    const candidateIds = iconCandidates.map((c) => c.id);
+    const processed = iconRows
+      ? applyIconRowsToXml(xml, iconRows, { candidateIds })
+      : await applyIconEnhancements(xml, { candidateIds });
+    nextXml = processed.xml;
+    iconMeta = {
+      applied: processed.applied,
+      missing: processed.missing,
+      autoApplied: processed.autoApplied || [],
+    };
+  } catch (err) {
+    log("icon postprocess skipped", { message: err?.message });
+  }
+
+  const visualDefaults = applyVisualDefaults(nextXml);
+  nextXml = visualDefaults.xml;
+  const visualSummary = summarizeDrawioVisuals(nextXml);
+
+  return {
+    xml: nextXml,
+    visualDefaults,
+    visualSummary,
+    iconMeta,
+  };
 }
 
 export function buildGenerationPrompt({ presetDef, iconPrompt, title, sourceText }) {
@@ -359,37 +509,24 @@ export async function generateDrawio({ preset, sourceText, title, maxSourceChars
     throw new Error("Model did not return valid draw.io XML.");
   }
 
-  let xml = extractedXml;
-  let iconMeta = { applied: [], missing: [], autoApplied: [] };
-  try {
-    const processed = await applyIconEnhancements(extractedXml, {
-      candidateIds: iconContext.candidates.map((c) => c.id),
+  const processedXml = await postProcessDrawioXml(extractedXml, {
+    iconCandidates: iconContext.candidates,
+  });
+  const { xml, visualDefaults, visualSummary, iconMeta } = processedXml;
+
+  if (
+    iconMeta.applied.length > 0 ||
+    iconMeta.missing.length > 0 ||
+    iconMeta.autoApplied.length > 0
+  ) {
+    log("icon placeholders processed", {
+      applied: iconMeta.applied.length,
+      autoApplied: iconMeta.autoApplied.length,
+      missing: iconMeta.missing.length,
     });
-    xml = processed.xml;
-    iconMeta = {
-      applied: processed.applied,
-      missing: processed.missing,
-      autoApplied: processed.autoApplied || [],
-    };
-    if (
-      processed.applied.length > 0 ||
-      processed.missing.length > 0 ||
-      processed.autoApplied?.length > 0
-    ) {
-      log("icon placeholders processed", {
-        applied: processed.applied.length,
-        autoApplied: processed.autoApplied?.length || 0,
-        missing: processed.missing.length,
-      });
-    }
-  } catch (err) {
-    log("icon postprocess skipped", { message: err?.message });
   }
 
-  const visualDefaults = applyVisualDefaults(xml);
-  xml = visualDefaults.xml;
-
-  log("✓ extracted XML", { xmlChars: xml.length });
+  log("✓ extracted XML", { xmlChars: xml.length, visualSummary });
 
   const meta = {
     model,
@@ -402,10 +539,11 @@ export async function generateDrawio({ preset, sourceText, title, maxSourceChars
     chunks,
     diagramBytes: Buffer.byteLength(xml, "utf8"),
     visualDefaultsApplied: visualDefaults.applied,
-    iconCandidates: iconContext.candidates.map((c) => c.id),
+    iconCandidates: iconContext.candidates.map(summarizeIconCandidate),
     iconsApplied: iconMeta.applied,
     iconsAutoApplied: iconMeta.autoApplied,
     iconsMissing: iconMeta.missing,
+    visualSummary,
   };
 
   return { xml, usage, meta };

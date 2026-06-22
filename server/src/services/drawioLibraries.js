@@ -143,17 +143,17 @@ function stripHtml(value) {
 
 function parseAttributes(tag) {
   const attrs = {};
-  const re = /\s([:\w.-]+)="([^"]*)"/g;
+  const re = /\s([:\w.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
   let match;
   while ((match = re.exec(tag))) {
-    attrs[match[1]] = decodeXmlEntities(match[2]);
+    attrs[match[1]] = decodeXmlEntities(match[2] ?? match[3]);
   }
   return attrs;
 }
 
 function replaceAttribute(tag, name, value) {
   const attr = `${name}="${xmlAttr(value)}"`;
-  const re = new RegExp(`\\s${name}="[^"]*"`);
+  const re = new RegExp(`\\s${name}\\s*=\\s*(?:"[^"]*"|'[^']*')`);
   if (re.test(tag)) return tag.replace(re, ` ${attr}`);
   return tag.replace(/\s*\/?>$/, (end) => ` ${attr}${end.trim()}`);
 }

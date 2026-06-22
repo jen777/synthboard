@@ -127,10 +127,10 @@ function decodeXmlEntities(value) {
 
 function parseXmlAttributes(tag) {
   const attrs = {};
-  const re = /\s([:\w.-]+)="([^"]*)"/g;
+  const re = /\s([:\w.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
   let match;
   while ((match = re.exec(tag))) {
-    attrs[match[1]] = decodeXmlEntities(match[2]);
+    attrs[match[1]] = decodeXmlEntities(match[2] ?? match[3]);
   }
   return attrs;
 }
@@ -172,7 +172,7 @@ function withStyleDefaults(style, defaults) {
   const nextEntries = [...entries];
   let added = 0;
   for (const [key, value] of Object.entries(defaults)) {
-    if (!hasStyleKey(style, key)) {
+    if (!hasStyleKeyCaseInsensitive(style, key)) {
       nextEntries.push([key, value]);
       added++;
     }
@@ -185,7 +185,8 @@ function withStyleDefaults(style, defaults) {
 
 function replaceStyleAttribute(tag, style) {
   const attr = `style="${xmlAttr(style)}"`;
-  if (/\sstyle="[^"]*"/.test(tag)) return tag.replace(/\sstyle="[^"]*"/, ` ${attr}`);
+  const re = /\sstyle\s*=\s*(?:"[^"]*"|'[^']*')/;
+  if (re.test(tag)) return tag.replace(re, ` ${attr}`);
   return tag.replace(/\s*\/?>$/, (end) => ` ${attr}${end.trim()}`);
 }
 

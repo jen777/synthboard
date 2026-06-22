@@ -113,6 +113,21 @@ test("accepts spaced and mixed-case synthIcon style entries from model output", 
   assert.deepEqual(result.applied, [{ id: "lib.database", title: "Database" }]);
 });
 
+test("handles single-quoted XML attributes without duplicating rewritten attributes", () => {
+  const xml = `<mxCell id='n1' value='Database' style='rounded=1;synthIcon=lib.database;synthIconWidth=140;' vertex='1' parent='1'><mxGeometry x='20' y='20' width='80' height='40' as='geometry' /></mxCell>`;
+
+  const result = applyIconRowsToXml(xml, [ICON_ROWS[0]]);
+  const cell = result.xml.match(/<mxCell id='n1'[\s\S]*?<\/mxCell>/)?.[0] || "";
+
+  assert.deepEqual(explicitIconIdsFromXml(xml), ["lib.database"]);
+  assert.deepEqual(result.applied, [{ id: "lib.database", title: "Database" }]);
+  assert.match(cell, /style="[^"]*shape=image/);
+  assert.match(cell, /width="140" height="100"/);
+  assert.doesNotMatch(cell, /\sstyle='/);
+  assert.doesNotMatch(cell, /\swidth='80'/);
+  assert.doesNotMatch(cell, /\sheight='40'/);
+});
+
 test("strips mixed-case style conflicts when applying exact library icons", () => {
   const xml = `<mxCell id="n1" value="Database" style="synthIcon=lib.database;Shape=rhombus;FillColor=#ffffff;StrokeColor=#111111;StrokeWidth=8;GradientColor=#eeeeee;Image=data:image/png;base64,wrong;Opacity=20;Shadow=1;Rotation=90;FlipH=1;ImageWidth=200;ImageHeight=40;ImageBackground=#fff;ImageBorder=#000;Perimeter=ellipsePerimeter;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="80" height="40" as="geometry" /></mxCell>`;
 

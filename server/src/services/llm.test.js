@@ -47,6 +47,24 @@ test("visual defaults polish unstyled non-icon vertices", () => {
   assert.doesNotMatch(result.xml, /<mxCell id="e1"[^>]*fillColor=/);
 });
 
+test("visual defaults handle single-quoted XML attributes without duplicates", () => {
+  const xml = `<mxCell id='n1' value='Plain' style='' vertex='1' parent='1'><mxGeometry x='0' y='0' width='120' height='60' as='geometry' /></mxCell><mxCell id='icon' value='Icon' style='shape=image;image=data:image/png;base64,abc;' vertex='1' parent='1' />`;
+
+  const result = applyVisualDefaults(xml);
+  const plainCell =
+    result.xml.match(/<mxCell id='n1'[\s\S]*?<\/mxCell>/)?.[0] || "";
+  const iconCell =
+    result.xml.match(/<mxCell id='icon'[\s\S]*?(?:\/>|<\/mxCell>)/)?.[0] || "";
+  const summary = summarizeDrawioVisuals(result.xml);
+
+  assert.equal(result.applied, 1);
+  assert.match(plainCell, /style="[^"]*fillColor=#eaf2ff/);
+  assert.doesNotMatch(plainCell, /\sstyle='/);
+  assert.doesNotMatch(iconCell, /fillColor=/);
+  assert.equal(summary.vertexCount, 2);
+  assert.equal(summary.iconVertexCount, 1);
+});
+
 test("visual defaults infer richer shapes for common non-icon labels", () => {
   const xml = [
     `<mxCell id="db" value="Customer DB" style="" vertex="1" parent="1" />`,

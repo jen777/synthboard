@@ -178,6 +178,23 @@ function iconListTitle(items) {
     .join("\n");
 }
 
+function iconAutoTitle(g) {
+  const skipped = g.icon_auto_skipped || {};
+  const skippedText = Object.entries(skipped)
+    .filter(([, value]) => Number(value) > 0)
+    .map(([key, value]) => `${key}: ${fmtNum(value)}`)
+    .join(", ");
+  return [
+    `auto applied: ${fmtNum(g.icon_auto_applied_count)}`,
+    `auto target: ${fmtNum(g.icon_auto_target)}`,
+    `eligible vertices: ${fmtNum(g.icon_auto_eligible)}`,
+    `auto candidates: ${fmtNum(g.icon_auto_candidate_count)}`,
+    skippedText ? `skipped: ${skippedText}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function generationQualityFlags(g) {
   if (g.status === "failed") return ["failed"];
 
@@ -260,6 +277,13 @@ function Generations() {
         />
         <Stat label="Icons applied" value={fmtNum(totals.icons_applied_total)} />
         <Stat label="Auto-applied icons" value={fmtNum(totals.icons_auto_applied_total)} />
+        <Stat
+          label="Auto target hit"
+          value={`${fmtNum(totals.icons_auto_applied_total)} / ${fmtNum(
+            totals.icon_auto_target_total,
+          )} (${fmtPct(totals.icons_auto_applied_total, totals.icon_auto_target_total)})`}
+        />
+        <Stat label="Auto-eligible nodes" value={fmtNum(totals.icon_auto_eligible_total)} />
         <Stat label="Icon misses" value={fmtNum(totals.icons_missing_total)} />
         <Stat
           label="Visual defaults used"
@@ -329,6 +353,7 @@ function Generations() {
                 <th style={{ textAlign: "right" }}>With icons</th>
                 <th style={{ textAlign: "right" }}>Icons</th>
                 <th style={{ textAlign: "right" }}>Auto</th>
+                <th style={{ textAlign: "right" }}>Auto target</th>
                 <th style={{ textAlign: "right" }}>Styled</th>
                 <th style={{ textAlign: "right" }}>Icon coverage</th>
                 <th style={{ textAlign: "right" }}>Avg colors</th>
@@ -349,6 +374,10 @@ function Generations() {
                   <td style={{ textAlign: "right" }}>{fmtNum(p.icons_applied)}</td>
                   <td style={{ textAlign: "right" }}>
                     {fmtNum(p.icons_auto_applied)}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {fmtNum(p.icons_auto_applied)} / {fmtNum(p.icon_auto_target)} (
+                    {fmtPct(p.icons_auto_applied, p.icon_auto_target)})
                   </td>
                   <td style={{ textAlign: "right" }}>
                     {fmtNum(p.visual_defaults_applied)}
@@ -443,14 +472,22 @@ function Generations() {
                     <td
                       style={{ textAlign: "right" }}
                       title={
-                        iconListTitle(g.icons_applied) ||
-                        iconListTitle(g.icons_auto_applied) ||
-                        iconListTitle(g.icons_missing)
+                        [
+                          iconAutoTitle(g),
+                          iconListTitle(g.icons_applied),
+                          iconListTitle(g.icons_auto_applied),
+                          iconListTitle(g.icons_missing),
+                        ]
+                          .filter(Boolean)
+                          .join("\n\n")
                       }
                     >
                       {fmtNum(g.icon_applied_count)}
                       {g.icon_auto_applied_count > 0 && (
                         <small className="muted"> / {fmtNum(g.icon_auto_applied_count)} auto</small>
+                      )}
+                      {g.icon_auto_target > 0 && (
+                        <small className="muted"> / {fmtNum(g.icon_auto_target)} target</small>
                       )}
                       {g.icon_missing_count > 0 && (
                         <small className="muted"> / {fmtNum(g.icon_missing_count)} miss</small>

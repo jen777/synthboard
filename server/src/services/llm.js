@@ -330,7 +330,15 @@ export async function postProcessDrawioXml(
   { iconCandidates = [], iconRows = null } = {},
 ) {
   let nextXml = xml;
-  let iconMeta = { applied: [], missing: [], autoApplied: [] };
+  let iconMeta = {
+    applied: [],
+    missing: [],
+    autoApplied: [],
+    autoEligible: 0,
+    autoTarget: 0,
+    autoCandidateCount: 0,
+    autoSkipped: {},
+  };
   try {
     const candidateIds = iconCandidates.map((c) => c.id);
     const processed = iconRows
@@ -341,6 +349,10 @@ export async function postProcessDrawioXml(
       applied: processed.applied,
       missing: processed.missing,
       autoApplied: processed.autoApplied || [],
+      autoEligible: processed.autoEligible || 0,
+      autoTarget: processed.autoTarget || 0,
+      autoCandidateCount: processed.autoCandidateCount || 0,
+      autoSkipped: processed.autoSkipped || {},
     };
   } catch (err) {
     log("icon postprocess skipped", { message: err?.message });
@@ -523,6 +535,9 @@ export async function generateDrawio({ preset, sourceText, title, maxSourceChars
       applied: iconMeta.applied.length,
       autoApplied: iconMeta.autoApplied.length,
       missing: iconMeta.missing.length,
+      autoEligible: iconMeta.autoEligible,
+      autoTarget: iconMeta.autoTarget,
+      autoCandidateCount: iconMeta.autoCandidateCount,
     });
   }
 
@@ -543,6 +558,10 @@ export async function generateDrawio({ preset, sourceText, title, maxSourceChars
     iconsApplied: iconMeta.applied,
     iconsAutoApplied: iconMeta.autoApplied,
     iconsMissing: iconMeta.missing,
+    iconAutoEligible: iconMeta.autoEligible,
+    iconAutoTarget: iconMeta.autoTarget,
+    iconAutoCandidateCount: iconMeta.autoCandidateCount,
+    iconAutoSkipped: iconMeta.autoSkipped,
     visualSummary,
   };
 

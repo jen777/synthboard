@@ -165,6 +165,9 @@ test("local post-processing pipeline produces icon-rich styled XML from model-li
 
   assert.equal(result.iconMeta.applied.length, 2);
   assert.equal(result.iconMeta.autoApplied.length, 1);
+  assert.equal(result.iconMeta.autoEligible, 2);
+  assert.equal(result.iconMeta.autoTarget, 2);
+  assert.equal(result.iconMeta.autoCandidateCount, 2);
   assert.match(result.xml, /id="api"[\s\S]*?width="109" height="109"/);
   assert.match(result.xml, /id="db"[\s\S]*?shape=image/);
   assert.match(result.xml, /id="decision"[^>]*shape=rhombus/);

@@ -105,6 +105,12 @@ router.get("/generations", async (req, res, next) => {
                                                              AS icons_auto_applied_total,
            COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsMissing', '[]'::jsonb))), 0)::bigint
                                                              AS icons_missing_total,
+           COALESCE(SUM(COALESCE((meta->>'iconAutoEligible')::int, 0)), 0)::bigint
+                                                             AS icon_auto_eligible_total,
+           COALESCE(SUM(COALESCE((meta->>'iconAutoTarget')::int, 0)), 0)::bigint
+                                                             AS icon_auto_target_total,
+           COALESCE(SUM(COALESCE((meta->>'iconAutoCandidateCount')::int, 0)), 0)::bigint
+                                                             AS icon_auto_candidate_total,
            COUNT(*) FILTER (
              WHERE COALESCE((meta->>'visualDefaultsApplied')::int, 0) > 0
            )::int                                          AS visual_default_generations,
@@ -152,6 +158,12 @@ router.get("/generations", async (req, res, next) => {
                   AS icons_applied,
                 COALESCE(SUM(jsonb_array_length(COALESCE(meta->'iconsAutoApplied', '[]'::jsonb))), 0)::bigint
                   AS icons_auto_applied,
+                COALESCE(SUM(COALESCE((meta->>'iconAutoEligible')::int, 0)), 0)::bigint
+                  AS icon_auto_eligible,
+                COALESCE(SUM(COALESCE((meta->>'iconAutoTarget')::int, 0)), 0)::bigint
+                  AS icon_auto_target,
+                COALESCE(SUM(COALESCE((meta->>'iconAutoCandidateCount')::int, 0)), 0)::bigint
+                  AS icon_auto_candidate_count,
                 COALESCE(SUM(COALESCE((meta->>'visualDefaultsApplied')::int, 0)), 0)::bigint
                   AS visual_defaults_applied,
                 COALESCE(SUM(COALESCE((meta#>>'{visualSummary,vertexCount}')::int, 0)), 0)::bigint
@@ -190,6 +202,12 @@ router.get("/generations", async (req, res, next) => {
                   AS icon_auto_applied_count,
                 jsonb_array_length(COALESCE(g.meta->'iconsMissing', '[]'::jsonb))::int
                   AS icon_missing_count,
+                COALESCE((g.meta->>'iconAutoEligible')::int, 0)::int
+                  AS icon_auto_eligible,
+                COALESCE((g.meta->>'iconAutoTarget')::int, 0)::int
+                  AS icon_auto_target,
+                COALESCE((g.meta->>'iconAutoCandidateCount')::int, 0)::int
+                  AS icon_auto_candidate_count,
                 COALESCE((g.meta->>'visualDefaultsApplied')::int, 0)::int
                   AS visual_defaults_applied,
                 COALESCE((g.meta#>>'{visualSummary,vertexCount}')::int, 0)::int
@@ -206,6 +224,7 @@ router.get("/generations", async (req, res, next) => {
                 COALESCE(g.meta->'iconsApplied', '[]'::jsonb) AS icons_applied,
                 COALESCE(g.meta->'iconsAutoApplied', '[]'::jsonb) AS icons_auto_applied,
                 COALESCE(g.meta->'iconsMissing', '[]'::jsonb) AS icons_missing,
+                COALESCE(g.meta->'iconAutoSkipped', '{}'::jsonb) AS icon_auto_skipped,
                 v.title AS viz_title,
                 u.email AS user_email, u.name AS user_name
            FROM diagram_generations g

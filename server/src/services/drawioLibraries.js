@@ -11,8 +11,11 @@ const ICON_SIZE_PRESETS = {
   hero: 1.7,
 };
 const AUTO_ICON_TARGET = 6;
+const AUTO_ICON_MAX_TARGET = 10;
+const AUTO_ICON_TARGET_RATIO = 0.6;
 const AUTO_ICON_MIN_SCORE = 12;
 const AUTO_ICON_MAX_REUSE = 3;
+const MAX_PROMPT_OBJECTS_PER_TITLE = 2;
 const GENERAL_ICON_TERMS = [
   "actor",
   "application",
@@ -62,23 +65,37 @@ const LABEL_ICON_ALIASES = {
   app: ["application", "service"],
   apps: ["application", "service"],
   auth: ["identity", "user"],
+  backend: ["service", "server", "api"],
   bucket: ["storage"],
+  client: ["user", "application"],
+  customer: ["user", "actor"],
   db: ["database", "storage"],
+  docker: ["container", "compute", "service"],
   event: ["queue", "message"],
+  events: ["queue", "message"],
   file: ["document", "storage"],
+  files: ["document", "storage"],
+  frontend: ["application", "web", "client"],
   job: ["worker", "process"],
   k8s: ["kubernetes", "cluster"],
+  lambda: ["function", "serverless", "compute"],
   login: ["user", "identity"],
   message: ["queue", "event"],
   messaging: ["queue", "event"],
+  mobile: ["application", "client"],
   person: ["user", "actor"],
+  postgres: ["database", "db", "sql"],
   proxy: ["gateway", "api"],
+  react: ["application", "frontend", "web"],
   repo: ["repository", "storage"],
+  s3: ["storage", "bucket", "file"],
   server: ["service", "compute"],
   serverless: ["function", "job", "compute"],
   svc: ["service"],
   vm: ["virtual", "machine", "compute"],
   web: ["application", "service"],
+  webhook: ["event", "message", "api"],
+  website: ["application", "web"],
   worker: ["process", "service"],
 };
 
@@ -157,8 +174,24 @@ function styleValue(style, key) {
   return styleEntries(style).find(([k]) => k === key)?.[1] || null;
 }
 
+function styleValueCaseInsensitive(style, key) {
+  const normalized = key.toLowerCase();
+  return (
+    styleEntries(style).find(([k]) => k.toLowerCase() === normalized)?.[1] || null
+  );
+}
+
 function hasStyleKey(style, key) {
   return styleEntries(style).some(([k]) => k === key);
+}
+
+function hasStyleKeyCaseInsensitive(style, key) {
+  const normalized = key.toLowerCase();
+  return styleEntries(style).some(([k]) => k.toLowerCase() === normalized);
+}
+
+function isSynthIconStyleKey(key) {
+  return String(key || "").trim().toLowerCase().startsWith("synthicon");
 }
 
 function boundedNumber(value, { min, max }) {
@@ -320,16 +353,12 @@ export function buildObjectAliases({ title, provider }) {
   return unique(aliases);
 }
 
-export async function ingestDrawioLibrary({
+export function extractDrawioLibraryObjects({
   id,
   name,
   provider,
   styleFamily,
-  sourceUrl,
-  sourceType,
-  version,
   content,
-  metadata,
 }) {
   const libraryId = slugify(id || name);
   if (!libraryId) throw new Error("Library id or name is required.");
@@ -354,13 +383,41 @@ export async function ingestDrawioLibrary({
       return {
         baseId: baseObjectId(libraryId, details.title, index),
         libraryId,
+        library_id: libraryId,
+        library_name: name || libraryId,
+        provider: provider || null,
+        style_family: styleFamily || null,
         aliases,
         searchText,
+        search_text: searchText,
         ...details,
       };
     });
+
   const { objects, duplicatesIgnored, variantsCreated } =
     resolveObjectIdCollisions(rawObjects);
+  return { libraryId, objects, duplicatesIgnored, variantsCreated };
+}
+
+export async function ingestDrawioLibrary({
+  id,
+  name,
+  provider,
+  styleFamily,
+  sourceUrl,
+  sourceType,
+  version,
+  content,
+  metadata,
+}) {
+  const { libraryId, objects, duplicatesIgnored, variantsCreated } =
+    extractDrawioLibraryObjects({
+      id,
+      name,
+      provider,
+      styleFamily,
+      content,
+    });
   if (duplicatesIgnored > 0 || variantsCreated > 0) {
     console.log("[drawio-libraries] resolved duplicate object names", {
       libraryId,
@@ -487,6 +544,35 @@ function chooseDominantLibrary(rows) {
   return [...totals.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 }
 
+function candidateTitleKey(row) {
+  return slugify(row.title || row.id);
+}
+
+export function selectPromptIconCandidates(rankedRows, limit = MAX_PROMPT_OBJECTS) {
+  const dominantLibraryId = chooseDominantLibrary(rankedRows);
+  const ordered = [
+    ...rankedRows.filter((row) => row.library_id === dominantLibraryId),
+    ...rankedRows.filter((row) => row.library_id !== dominantLibraryId),
+  ];
+  const selected = [];
+  const deferred = [];
+  const titleCounts = new Map();
+
+  for (const row of ordered) {
+    const key = candidateTitleKey(row);
+    const count = titleCounts.get(key) || 0;
+    if (count < MAX_PROMPT_OBJECTS_PER_TITLE) {
+      selected.push(row);
+      titleCounts.set(key, count + 1);
+    } else {
+      deferred.push(row);
+    }
+    if (selected.length >= limit) return selected;
+  }
+
+  return [...selected, ...deferred].slice(0, limit);
+}
+
 export function buildIconQueryTerms(searchText, { limit = 90 } = {}) {
   return expandLabelTerms(unique(words(searchText)).slice(0, 60)).slice(0, limit);
 }
@@ -524,10 +610,7 @@ export async function searchIconObjects(searchText, { limit = MAX_PROMPT_OBJECTS
     .filter((row) => row.score > 0)
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
 
-  const dominantLibraryId = chooseDominantLibrary(ranked);
-  const sameLibrary = ranked.filter((row) => row.library_id === dominantLibraryId);
-  const fallback = ranked.filter((row) => row.library_id !== dominantLibraryId);
-  return [...sameLibrary, ...fallback].slice(0, limit);
+  return selectPromptIconCandidates(ranked, limit);
 }
 
 export function buildIconSearchText({ preset, sourceText, title }) {
@@ -582,20 +665,37 @@ export async function buildIconPromptContext({ preset, sourceText, title }) {
 function cleanRequestedIconStyle(style) {
   const blockedKeys = new Set([
     "aspect",
-    "fillColor",
-    "gradientColor",
+    "fillcolor",
+    "flip",
+    "fliph",
+    "flipv",
+    "gradientcolor",
     "image",
-    "imageAspect",
+    "imageaspect",
+    "imagebackground",
+    "imageborder",
+    "imageheight",
+    "imagewidth",
+    "opacity",
+    "perimeter",
     "rounded",
+    "rotation",
+    "shadow",
     "shape",
-    "strokeColor",
+    "strokecolor",
+    "strokewidth",
   ]);
   return String(style || "")
     .split(";")
     .filter((part) => {
       if (!part) return false;
+      if (!part.includes("=")) return false;
       const key = part.split("=")[0]?.trim();
-      return key && !key.startsWith("synthIcon") && !blockedKeys.has(key);
+      return (
+        key &&
+        !isSynthIconStyleKey(key) &&
+        !blockedKeys.has(key.toLowerCase())
+      );
     })
     .join(";");
 }
@@ -606,7 +706,7 @@ function stripSynthIconStyleKeys(style) {
     .filter((part) => {
       if (!part) return false;
       const key = part.split("=")[0]?.trim();
-      return key && !key.startsWith("synthIcon");
+      return key && !isSynthIconStyleKey(key);
     })
     .join(";");
 }
@@ -616,19 +716,19 @@ function requestedIconSize(requestedStyle, icon) {
   const baseHeight = boundedNumber(icon.height, { min: 24, max: 240 }) || 72;
   const aspect = baseWidth / baseHeight || 1;
 
-  const preset = styleValue(requestedStyle, "synthIconSize")?.toLowerCase();
+  const preset = styleValueCaseInsensitive(requestedStyle, "synthIconSize")?.toLowerCase();
   const presetScale = ICON_SIZE_PRESETS[preset] || null;
-  const explicitScale = boundedNumber(styleValue(requestedStyle, "synthIconScale"), {
+  const explicitScale = boundedNumber(styleValueCaseInsensitive(requestedStyle, "synthIconScale"), {
     min: 0.35,
     max: 3,
   });
   const scale = explicitScale || presetScale;
 
-  let width = boundedNumber(styleValue(requestedStyle, "synthIconWidth"), {
+  let width = boundedNumber(styleValueCaseInsensitive(requestedStyle, "synthIconWidth"), {
     min: 24,
     max: 360,
   });
-  let height = boundedNumber(styleValue(requestedStyle, "synthIconHeight"), {
+  let height = boundedNumber(styleValueCaseInsensitive(requestedStyle, "synthIconHeight"), {
     min: 24,
     max: 280,
   });
@@ -666,9 +766,26 @@ function applyGeometrySize(cellXml, size) {
   return cellXml.replace(/<\/mxCell>$/i, `\n  ${geometry}\n</mxCell>`);
 }
 
+function styleDefaults(style, defaults) {
+  return Object.entries(defaults)
+    .filter(([key]) => !hasStyleKey(style, key))
+    .map(([key, value]) => `${key}=${value}`)
+    .join(";");
+}
+
 function mergedIconStyle(iconStyle, requestedStyle) {
   const cleanRequested = cleanRequestedIconStyle(requestedStyle);
-  const labelDefaults = "whiteSpace=wrap;html=1;verticalLabelPosition=bottom;verticalAlign=top;";
+  const baseStyle = `${iconStyle || ""};${cleanRequested || ""}`;
+  const labelDefaults = styleDefaults(baseStyle, {
+    whiteSpace: "wrap",
+    html: "1",
+    verticalLabelPosition: "bottom",
+    verticalAlign: "top",
+    align: "center",
+    spacingTop: "6",
+    fontSize: "12",
+    fontColor: "#0f172a",
+  });
   return `${iconStyle || ""};${labelDefaults}${cleanRequested ? `;${cleanRequested}` : ""}`
     .replace(/;{2,}/g, ";")
     .replace(/^;+|;+$/g, "");
@@ -684,14 +801,27 @@ function isExistingLibraryObjectStyle(style) {
   );
 }
 
+function isContainerLikeStyle(style) {
+  const shape = styleValue(style, "shape") || "";
+  return shape === "swimlane" || shape === "group" || shape === "table";
+}
+
 export async function applyIconPlaceholders(xml) {
   return applyIconEnhancements(xml);
 }
 
+export function explicitIconIdsFromXml(xml) {
+  const ids = [];
+  String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
+    const iconId = styleValueCaseInsensitive(parseAttributes(tag).style, "synthIcon");
+    if (iconId) ids.push(iconId);
+    return tag;
+  });
+  return unique(ids);
+}
+
 export async function applyIconEnhancements(xml, { candidateIds = [] } = {}) {
-  const placeholderIds = unique(
-    [...String(xml || "").matchAll(/synthIcon=([^;"&<\s]+)/g)].map((m) => m[1]),
-  );
+  const placeholderIds = explicitIconIdsFromXml(xml);
   const ids = unique([...placeholderIds, ...candidateIds]);
   if (ids.length === 0) return { xml, applied: [], missing: [], autoApplied: [] };
 
@@ -703,7 +833,6 @@ export async function applyIconEnhancements(xml, { candidateIds = [] } = {}) {
   );
   return applyIconRowsToXml(xml, rows, {
     candidateIds,
-    targetApplied: candidateIds.length > 0 ? AUTO_ICON_TARGET : placeholderIds.length,
   });
 }
 
@@ -747,12 +876,56 @@ function candidateRows(rows, candidateIds) {
   return candidateIds.map((id) => byId.get(id)).filter(Boolean);
 }
 
-function chooseAutoIcon({ attrs, rows, iconUseCounts }) {
-  if (attrs.vertex !== "1") return null;
-  if (isExistingLibraryObjectStyle(attrs.style)) return null;
+function iconReferenceKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "");
+}
 
+function resolveIconReference(reference, rows) {
+  const key = iconReferenceKey(reference);
+  if (!key) return null;
+  return (
+    rows.find((row) => iconReferenceKey(row.id) === key) ||
+    rows.find((row) => iconReferenceKey(row.title) === key) ||
+    rows.find((row) => iconReferenceKey(row.id).endsWith(key)) ||
+    null
+  );
+}
+
+function collectParentCellIds(xml) {
+  const parentIds = new Set();
+  String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
+    const parent = parseAttributes(tag).parent;
+    if (parent) parentIds.add(parent);
+    return tag;
+  });
+  return parentIds;
+}
+
+function isAutoIconEligible(attrs, parentIds) {
+  if (attrs.vertex !== "1") return false;
+  if (hasStyleKeyCaseInsensitive(attrs.style, "synthIcon")) return false;
+  if (parentIds.has(attrs.id)) return false;
+  if (isExistingLibraryObjectStyle(attrs.style)) return false;
+  if (isContainerLikeStyle(attrs.style)) return false;
+  return Boolean(stripHtml(attrs.value).trim());
+}
+
+function autoIconEligibilityReason(attrs, parentIds) {
+  if (attrs.vertex !== "1") return "not_vertex";
+  if (!stripHtml(attrs.value).trim()) return "empty_label";
+  if (hasStyleKeyCaseInsensitive(attrs.style, "synthIcon")) return "explicit_placeholder";
+  if (parentIds.has(attrs.id)) return "parent_vertex";
+  if (isExistingLibraryObjectStyle(attrs.style)) return "library_object";
+  if (isContainerLikeStyle(attrs.style)) return "container_style";
+  return "eligible";
+}
+
+function chooseAutoIcon({ attrs, rows, iconUseCounts, parentIds }) {
+  if (!isAutoIconEligible(attrs, parentIds)) return null;
   const label = stripHtml(attrs.value);
-  if (!label.trim()) return null;
 
   const [best] = rows
     .filter((row) => row.style && (iconUseCounts.get(row.id) || 0) < AUTO_ICON_MAX_REUSE)
@@ -768,13 +941,57 @@ function chooseAutoIcon({ attrs, rows, iconUseCounts }) {
   return best?.row || null;
 }
 
+function countAutoIconEligibleVertices(xml) {
+  let count = 0;
+  const parentIds = collectParentCellIds(xml);
+  String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
+    const attrs = parseAttributes(tag);
+    if (isAutoIconEligible(attrs, parentIds)) count++;
+    return tag;
+  });
+  return count;
+}
+
+export function autoIconTargetForXml(xml) {
+  const eligible = countAutoIconEligibleVertices(xml);
+  if (eligible === 0) return 0;
+  return Math.min(
+    AUTO_ICON_MAX_TARGET,
+    eligible,
+    Math.max(AUTO_ICON_TARGET, Math.ceil(eligible * AUTO_ICON_TARGET_RATIO)),
+  );
+}
+
+function summarizeAutoIconEligibility(xml) {
+  const parentIds = collectParentCellIds(xml);
+  const skipped = {};
+  let eligible = 0;
+  String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
+    const attrs = parseAttributes(tag);
+    const reason = autoIconEligibilityReason(attrs, parentIds);
+    if (reason === "eligible") {
+      eligible++;
+    } else if (attrs.vertex === "1") {
+      skipped[reason] = (skipped[reason] || 0) + 1;
+    }
+    return tag;
+  });
+  return { eligible, skipped, parentIds };
+}
+
 export function applyIconRowsToXml(
   xml,
   rows,
-  { candidateIds = [], targetApplied = AUTO_ICON_TARGET } = {},
+  { candidateIds = [], targetApplied = null } = {},
 ) {
   const byId = new Map(rows.map((row) => [row.id, row]));
   const autoCandidates = candidateRows(rows, candidateIds);
+  const eligibility = summarizeAutoIconEligibility(xml);
+  const parentIds = eligibility.parentIds;
+  const autoTarget =
+    targetApplied === null || targetApplied === undefined
+      ? autoIconTargetForXml(xml)
+      : targetApplied;
   const iconUseCounts = new Map();
   const applied = [];
   const autoApplied = [];
@@ -787,11 +1004,11 @@ export function applyIconRowsToXml(
       if (!openTag) return cellXml;
 
       const attrs = parseAttributes(openTag);
-      const match = String(attrs.style || "").match(/(?:^|;)synthIcon=([^;]+)/);
+      const iconId = styleValueCaseInsensitive(attrs.style, "synthIcon");
       let icon = null;
       let auto = false;
 
-      if (match) {
+      if (iconId) {
         if (attrs.vertex !== "1") {
           const cleanedTag = replaceAttribute(
             openTag,
@@ -801,8 +1018,7 @@ export function applyIconRowsToXml(
           return cellXml.replace(openTag, cleanedTag);
         }
 
-        const iconId = match[1];
-        icon = byId.get(iconId);
+        icon = byId.get(iconId) || resolveIconReference(iconId, rows);
         if (!icon?.style) {
           missing.push(iconId);
           const cleanedTag = replaceAttribute(
@@ -812,8 +1028,13 @@ export function applyIconRowsToXml(
           );
           return cellXml.replace(openTag, cleanedTag);
         }
-      } else if (applied.length < targetApplied && autoCandidates.length > 0) {
-        icon = chooseAutoIcon({ attrs, rows: autoCandidates, iconUseCounts });
+      } else if (autoApplied.length < autoTarget && autoCandidates.length > 0) {
+        icon = chooseAutoIcon({
+          attrs,
+          rows: autoCandidates,
+          iconUseCounts,
+          parentIds,
+        });
         auto = Boolean(icon);
       }
 
@@ -841,5 +1062,14 @@ export function applyIconRowsToXml(
     },
   );
 
-  return { xml: nextXml, applied, missing: unique(missing), autoApplied };
+  return {
+    xml: nextXml,
+    applied,
+    missing: unique(missing),
+    autoApplied,
+    autoEligible: eligibility.eligible,
+    autoTarget,
+    autoCandidateCount: autoCandidates.length,
+    autoSkipped: eligibility.skipped,
+  };
 }

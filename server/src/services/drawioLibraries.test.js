@@ -50,6 +50,15 @@ function compressedLibraryObject({ id, title, style, width, height }) {
   };
 }
 
+function compressedGraphModelObject({ title, width, height, xml }) {
+  return {
+    title,
+    w: width,
+    h: height,
+    xml: zlib.deflateRawSync(encodeURIComponent(xml)).toString("base64"),
+  };
+}
+
 function mxlibrary(items) {
   return `<mxlibrary>${JSON.stringify(items)}</mxlibrary>`;
 }
@@ -82,6 +91,29 @@ test("extracts usable objects from uploaded drawio library XML", () => {
   assert(result.objects[0].search_text.includes("web"));
   assert.deepEqual(result.duplicatesIgnored, 0);
   assert.deepEqual(result.variantsCreated, 0);
+});
+
+test("extracts the best visual vertex from multi-cell drawio library objects", () => {
+  const result = extractDrawioLibraryObjects({
+    id: "Azure General",
+    name: "Azure General",
+    provider: "Azure",
+    styleFamily: "azure-flat",
+    content: mxlibrary([
+      compressedGraphModelObject({
+        title: "SQL Database Group",
+        width: 120,
+        height: 100,
+        xml: `<mxGraphModel><root><mxCell id="0" /><mxCell id="1" parent="0" /><mxCell id="wrapper" value="SQL Database Group" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry width="120" height="100" as="geometry" /></mxCell><mxCell id="icon" value="SQL Database" style="shape=mxgraph.azure.sql_database;html=1;whiteSpace=wrap;" vertex="1" parent="wrapper"><mxGeometry x="20" y="20" width="80" height="80" as="geometry" /></mxCell></root></mxGraphModel>`,
+      }),
+    ]),
+  });
+
+  assert.equal(result.objects.length, 1);
+  assert.equal(
+    result.objects[0].style,
+    "shape=mxgraph.azure.sql_database;html=1;whiteSpace=wrap;",
+  );
 });
 
 test("replaces synthIcon placeholders, strips synthIcon keys, and preserves telemetry", () => {

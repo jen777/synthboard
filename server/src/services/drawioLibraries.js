@@ -228,7 +228,26 @@ function decodeLibraryGraphModel(xmlCompressed) {
 
 function extractFirstVertexCell(cellXml) {
   const tags = cellXml.match(/<mxCell\b[^>]*>/gi) || [];
-  return tags.find((tag) => /\bvertex="1"/i.test(tag)) || null;
+  const vertices = tags
+    .filter((tag) => /\bvertex\s*=\s*(?:"1"|'1')/i.test(tag))
+    .map((tag, index) => ({ tag, index, score: vertexStyleScore(tag) }));
+  return (
+    vertices.sort((a, b) => b.score - a.score || a.index - b.index)[0]?.tag || null
+  );
+}
+
+function vertexStyleScore(tag) {
+  const style = attrValue(parseAttributes(tag), "style");
+  if (!style) return 0;
+  if (isExistingLibraryObjectStyle(style)) return 100;
+  if (hasStyleKeyCaseInsensitive(style, "shape")) return 80;
+  if (
+    hasStyleKeyCaseInsensitive(style, "fillColor") ||
+    hasStyleKeyCaseInsensitive(style, "strokeColor")
+  ) {
+    return 50;
+  }
+  return 10;
 }
 
 function extractObjectDetails(item) {

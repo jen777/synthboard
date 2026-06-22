@@ -770,6 +770,7 @@ test("icon prompt describes image and drawio object usage", () => {
       library_name: "Azure General",
       provider: "Azure",
       style_family: "azure-flat",
+      search_text: "Blob Storage Azure General azure-flat storage bucket file document",
       width: 80,
       height: 80,
     },
@@ -780,5 +781,5 @@ test("icon prompt describes image and drawio object usage", () => {
   assert.match(prompt, /synthIcon=<object id>/);
   assert.match(prompt, /exact library style/);
   assert.match(prompt, /synthIconSize=small\|medium\|large\|hero/);
-  assert.match(prompt, /azure\.storage: Blob Storage/);
+  assert.match(prompt, /azure\.storage: Blob Storage .*matches bucket\/file\/document/);
 });

@@ -633,6 +633,24 @@ export function shouldUseIconCatalog({ preset, sourceText, title }) {
   return words(`${title || ""} ${preset || ""} ${sourceText || ""}`).length > 0;
 }
 
+function iconPromptKeywords(candidate, { limit = 8 } = {}) {
+  const blocked = new Set(
+    words(
+      [
+        candidate.id,
+        candidate.title,
+        candidate.library_name,
+        candidate.provider,
+        candidate.style_family,
+      ].join(" "),
+    ),
+  );
+  return unique(words(candidate.search_text || ""))
+    .filter((term) => !blocked.has(term))
+    .slice(0, limit)
+    .join("/");
+}
+
 export function buildIconPrompt(candidates) {
   if (!candidates?.length) return "";
 
@@ -640,7 +658,9 @@ export function buildIconPrompt(candidates) {
   const lines = candidates.map((c) => {
     const size =
       c.width && c.height ? `, native ${Math.round(c.width)}x${Math.round(c.height)}` : "";
-    return `- ${c.id}: ${c.title} (${c.provider || c.library_name}, ${c.style_family || "same set"}${size})`;
+    const keywordText = iconPromptKeywords(c);
+    const keywords = keywordText ? `, matches ${keywordText}` : "";
+    return `- ${c.id}: ${c.title} (${c.provider || c.library_name}, ${c.style_family || "same set"}${size}${keywords})`;
   });
 
   return `Available draw.io icon/object set context:

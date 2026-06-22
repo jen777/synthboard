@@ -255,6 +255,22 @@ export function applyVisualDefaults(xml) {
   let applied = 0;
   const nextXml = String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
     const attrs = parseXmlAttributes(tag);
+    if (attrValue(attrs, "edge") === "1") {
+      const result = withStyleDefaults(attrValue(attrs, "style"), {
+        edgeStyle: "orthogonalEdgeStyle",
+        rounded: "0",
+        html: "1",
+        strokeColor: "#64748b",
+        strokeWidth: "2",
+        endArrow: "block",
+        endFill: "1",
+        fontColor: "#334155",
+      });
+      if (result.added === 0) return tag;
+      applied++;
+      return replaceStyleAttribute(tag, result.style);
+    }
+
     if (attrValue(attrs, "vertex") !== "1") return tag;
 
     const style = attrValue(attrs, "style");

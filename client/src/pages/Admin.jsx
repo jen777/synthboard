@@ -292,7 +292,7 @@ function Generations() {
             completed,
           )})`}
         />
-        <Stat label="Styled fallback nodes" value={fmtNum(totals.visual_defaults_total)} />
+        <Stat label="Visual defaults applied" value={fmtNum(totals.visual_defaults_total)} />
         <Stat
           label="Icon coverage"
           value={`${fmtNum(totals.visual_icon_vertices_total)} (${fmtPct(
@@ -504,7 +504,9 @@ function Generations() {
                         g.visual_styled_vertex_count,
                       )} styled nodes, ${fmtNum(
                         g.visual_fill_color_count,
-                      )} fill colors, ${fmtNum(g.visual_shape_type_count)} shape types`}
+                      )} fill colors, ${fmtNum(
+                        g.visual_shape_type_count,
+                      )} shape types, ${fmtNum(g.visual_defaults_applied)} visual defaults`}
                     >
                       {fmtNum(g.visual_defaults_applied)}
                     </td>

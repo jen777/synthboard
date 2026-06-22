@@ -40,11 +40,28 @@ test("visual defaults polish unstyled non-icon vertices", () => {
 
   const result = applyVisualDefaults(xml);
 
-  assert.equal(result.applied, 1);
+  assert.equal(result.applied, 2);
   assert.match(result.xml, /fillColor=#eaf2ff/);
   assert.match(result.xml, /strokeColor=#5b7cfa/);
   assert.match(result.xml, /whiteSpace=wrap/);
   assert.doesNotMatch(result.xml, /<mxCell id="e1"[^>]*fillColor=/);
+  assert.match(result.xml, /<mxCell id="e1"[^>]*edgeStyle=orthogonalEdgeStyle/);
+  assert.match(result.xml, /<mxCell id="e1"[^>]*strokeColor=#64748b/);
+  assert.match(result.xml, /<mxCell id="e1"[^>]*strokeWidth=2/);
+});
+
+test("visual defaults preserve existing connector styles", () => {
+  const xml = `<mxCell id="e1" style="edgeStyle=elbowEdgeStyle;strokeColor=#ff0000;endArrow=none;" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry" /></mxCell>`;
+
+  const result = applyVisualDefaults(xml);
+  const edge = result.xml.match(/<mxCell id="e1"[\s\S]*?(?:>|\/>)/)?.[0] || "";
+
+  assert.equal(result.applied, 1);
+  assert.match(edge, /edgeStyle=elbowEdgeStyle/);
+  assert.match(edge, /strokeColor=#ff0000/);
+  assert.match(edge, /endArrow=none/);
+  assert.match(edge, /strokeWidth=2/);
+  assert.match(edge, /html=1/);
 });
 
 test("visual defaults handle single-quoted XML attributes without duplicates", () => {
@@ -75,7 +92,7 @@ test("visual defaults handle mixed-case XML attribute names", () => {
     result.xml.match(/<mxCell ID='icon'[\s\S]*?(?:\/>|<\/mxCell>)/)?.[0] || "";
   const summary = summarizeDrawioVisuals(result.xml);
 
-  assert.equal(result.applied, 1);
+  assert.equal(result.applied, 2);
   assert.match(plainCell, /style="[^"]*shape=rhombus/);
   assert.doesNotMatch(plainCell, /\sStyle=/);
   assert.doesNotMatch(iconCell, /fillColor=/);

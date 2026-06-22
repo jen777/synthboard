@@ -173,8 +173,9 @@ and parent/container vertices, preserving swimlanes, groups, and layout
 boundaries while decorating concrete leaf nodes. If no catalog exists or no
 match is found, generation falls back to ordinary draw.io shapes. A second
 visual-default pass adds missing fill, stroke, text, and rounded-corner styles to
-plain non-icon vertices so sparse model output still renders as a colored,
-presentation-ready diagram. It also
+plain non-icon vertices, and adds connector defaults such as orthogonal routing,
+readable stroke color, line width, and arrows to under-styled edges, so sparse
+model output still renders as a colored, presentation-ready diagram. It also
 infers common draw.io shapes for unmatched non-icon labels, such as cylinders
 for databases/storage, rhombuses for decisions, document shapes for files, and
 hexagons for queues/events, actor shapes for users/people, and ellipses for

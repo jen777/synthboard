@@ -151,9 +151,15 @@ function parseAttributes(tag) {
   return attrs;
 }
 
+function attrValue(attrs, name) {
+  const normalized = name.toLowerCase();
+  const entry = Object.entries(attrs).find(([key]) => key.toLowerCase() === normalized);
+  return entry?.[1] || "";
+}
+
 function replaceAttribute(tag, name, value) {
   const attr = `${name}="${xmlAttr(value)}"`;
-  const re = new RegExp(`\\s${name}\\s*=\\s*(?:"[^"]*"|'[^']*')`);
+  const re = new RegExp(`\\s${name}\\s*=\\s*(?:"[^"]*"|'[^']*')`, "i");
   if (re.test(tag)) return tag.replace(re, ` ${attr}`);
   return tag.replace(/\s*\/?>$/, (end) => ` ${attr}${end.trim()}`);
 }
@@ -232,7 +238,7 @@ function extractObjectDetails(item) {
     cellXml = decodeLibraryGraphModel(item.xml);
     const vertex = extractFirstVertexCell(cellXml);
     if (vertex) {
-      style = parseAttributes(vertex).style || null;
+      style = attrValue(parseAttributes(vertex), "style") || null;
     }
   } catch (err) {
     console.warn("[drawio-libraries] could not decode object", {
@@ -813,7 +819,10 @@ export async function applyIconPlaceholders(xml) {
 export function explicitIconIdsFromXml(xml) {
   const ids = [];
   String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
-    const iconId = styleValueCaseInsensitive(parseAttributes(tag).style, "synthIcon");
+    const iconId = styleValueCaseInsensitive(
+      attrValue(parseAttributes(tag), "style"),
+      "synthIcon",
+    );
     if (iconId) ids.push(iconId);
     return tag;
   });
@@ -897,7 +906,7 @@ function resolveIconReference(reference, rows) {
 function collectParentCellIds(xml) {
   const parentIds = new Set();
   String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
-    const parent = parseAttributes(tag).parent;
+    const parent = attrValue(parseAttributes(tag), "parent");
     if (parent) parentIds.add(parent);
     return tag;
   });
@@ -905,27 +914,29 @@ function collectParentCellIds(xml) {
 }
 
 function isAutoIconEligible(attrs, parentIds) {
-  if (attrs.vertex !== "1") return false;
-  if (hasStyleKeyCaseInsensitive(attrs.style, "synthIcon")) return false;
-  if (parentIds.has(attrs.id)) return false;
-  if (isExistingLibraryObjectStyle(attrs.style)) return false;
-  if (isContainerLikeStyle(attrs.style)) return false;
-  return Boolean(stripHtml(attrs.value).trim());
+  const style = attrValue(attrs, "style");
+  if (attrValue(attrs, "vertex") !== "1") return false;
+  if (hasStyleKeyCaseInsensitive(style, "synthIcon")) return false;
+  if (parentIds.has(attrValue(attrs, "id"))) return false;
+  if (isExistingLibraryObjectStyle(style)) return false;
+  if (isContainerLikeStyle(style)) return false;
+  return Boolean(stripHtml(attrValue(attrs, "value")).trim());
 }
 
 function autoIconEligibilityReason(attrs, parentIds) {
-  if (attrs.vertex !== "1") return "not_vertex";
-  if (!stripHtml(attrs.value).trim()) return "empty_label";
-  if (hasStyleKeyCaseInsensitive(attrs.style, "synthIcon")) return "explicit_placeholder";
-  if (parentIds.has(attrs.id)) return "parent_vertex";
-  if (isExistingLibraryObjectStyle(attrs.style)) return "library_object";
-  if (isContainerLikeStyle(attrs.style)) return "container_style";
+  const style = attrValue(attrs, "style");
+  if (attrValue(attrs, "vertex") !== "1") return "not_vertex";
+  if (!stripHtml(attrValue(attrs, "value")).trim()) return "empty_label";
+  if (hasStyleKeyCaseInsensitive(style, "synthIcon")) return "explicit_placeholder";
+  if (parentIds.has(attrValue(attrs, "id"))) return "parent_vertex";
+  if (isExistingLibraryObjectStyle(style)) return "library_object";
+  if (isContainerLikeStyle(style)) return "container_style";
   return "eligible";
 }
 
 function chooseAutoIcon({ attrs, rows, iconUseCounts, parentIds }) {
   if (!isAutoIconEligible(attrs, parentIds)) return null;
-  const label = stripHtml(attrs.value);
+  const label = stripHtml(attrValue(attrs, "value"));
 
   const [best] = rows
     .filter((row) => row.style && (iconUseCounts.get(row.id) || 0) < AUTO_ICON_MAX_REUSE)
@@ -971,7 +982,7 @@ function summarizeAutoIconEligibility(xml) {
     const reason = autoIconEligibilityReason(attrs, parentIds);
     if (reason === "eligible") {
       eligible++;
-    } else if (attrs.vertex === "1") {
+    } else if (attrValue(attrs, "vertex") === "1") {
       skipped[reason] = (skipped[reason] || 0) + 1;
     }
     return tag;
@@ -1004,16 +1015,17 @@ export function applyIconRowsToXml(
       if (!openTag) return cellXml;
 
       const attrs = parseAttributes(openTag);
-      const iconId = styleValueCaseInsensitive(attrs.style, "synthIcon");
+      const requestedStyle = attrValue(attrs, "style");
+      const iconId = styleValueCaseInsensitive(requestedStyle, "synthIcon");
       let icon = null;
       let auto = false;
 
       if (iconId) {
-        if (attrs.vertex !== "1") {
+        if (attrValue(attrs, "vertex") !== "1") {
           const cleanedTag = replaceAttribute(
             openTag,
             "style",
-            stripSynthIconStyleKeys(attrs.style),
+            stripSynthIconStyleKeys(requestedStyle),
           );
           return cellXml.replace(openTag, cleanedTag);
         }
@@ -1024,7 +1036,7 @@ export function applyIconRowsToXml(
           const cleanedTag = replaceAttribute(
             openTag,
             "style",
-            stripSynthIconStyleKeys(attrs.style),
+            stripSynthIconStyleKeys(requestedStyle),
           );
           return cellXml.replace(openTag, cleanedTag);
         }
@@ -1046,13 +1058,13 @@ export function applyIconRowsToXml(
         autoApplied.push({
           id: icon.id,
           title: icon.title,
-          label: stripHtml(attrs.value),
+          label: stripHtml(attrValue(attrs, "value")),
         });
       }
 
-      const style = mergedIconStyle(icon.style, attrs.style);
+      const style = mergedIconStyle(icon.style, requestedStyle);
       const size =
-        requestedIconSize(attrs.style, icon) ||
+        requestedIconSize(requestedStyle, icon) ||
         requestedIconSize("synthIconSize=medium", icon);
       const sizedCell = applyGeometrySize(cellXml, size);
       const nextOpenTag =

@@ -135,6 +135,12 @@ function parseXmlAttributes(tag) {
   return attrs;
 }
 
+function attrValue(attrs, name) {
+  const normalized = name.toLowerCase();
+  const entry = Object.entries(attrs).find(([key]) => key.toLowerCase() === normalized);
+  return entry?.[1] || "";
+}
+
 function styleEntries(style) {
   return String(style || "")
     .split(";")
@@ -185,7 +191,7 @@ function withStyleDefaults(style, defaults) {
 
 function replaceStyleAttribute(tag, style) {
   const attr = `style="${xmlAttr(style)}"`;
-  const re = /\sstyle\s*=\s*(?:"[^"]*"|'[^']*')/;
+  const re = /\sstyle\s*=\s*(?:"[^"]*"|'[^']*')/i;
   if (re.test(tag)) return tag.replace(re, ` ${attr}`);
   return tag.replace(/\s*\/?>$/, (end) => ` ${attr}${end.trim()}`);
 }
@@ -249,16 +255,16 @@ export function applyVisualDefaults(xml) {
   let applied = 0;
   const nextXml = String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
     const attrs = parseXmlAttributes(tag);
-    if (attrs.vertex !== "1") return tag;
+    if (attrValue(attrs, "vertex") !== "1") return tag;
 
-    const style = attrs.style || "";
+    const style = attrValue(attrs, "style");
     if (isLibraryObjectStyle(style)) return tag;
 
     const palette = VISUAL_PALETTE[vertexIndex % VISUAL_PALETTE.length];
     vertexIndex++;
     const shape = hasStyleKeyCaseInsensitive(style, "shape")
       ? null
-      : inferVertexShape(attrs.value);
+      : inferVertexShape(attrValue(attrs, "value"));
     const result = withStyleDefaults(style, {
       ...(shape ? { shape } : {}),
       rounded: "1",
@@ -287,13 +293,13 @@ export function summarizeDrawioVisuals(xml) {
 
   String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
     const attrs = parseXmlAttributes(tag);
-    const style = attrs.style || "";
+    const style = attrValue(attrs, "style");
 
-    if (attrs.edge === "1") {
+    if (attrValue(attrs, "edge") === "1") {
       edgeCount++;
       return tag;
     }
-    if (attrs.vertex !== "1") return tag;
+    if (attrValue(attrs, "vertex") !== "1") return tag;
 
     vertexCount++;
     const isLibraryObject = isLibraryObjectStyle(style);

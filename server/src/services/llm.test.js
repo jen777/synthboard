@@ -65,6 +65,27 @@ test("visual defaults handle single-quoted XML attributes without duplicates", (
   assert.equal(summary.iconVertexCount, 1);
 });
 
+test("visual defaults handle mixed-case XML attribute names", () => {
+  const xml = `<mxCell ID='n1' Value='Approval decision' Style='' Vertex='1' Parent='1'><mxGeometry X='0' Y='0' Width='120' Height='60' As='geometry' /></mxCell><mxCell ID='icon' Value='Icon' Style='Shape=Image;Image=data:image/png;base64,abc;' Vertex='1' Parent='1' /><mxCell ID='edge' Edge='1' Source='n1' Target='icon' Parent='1' />`;
+
+  const result = applyVisualDefaults(xml);
+  const plainCell =
+    result.xml.match(/<mxCell ID='n1'[\s\S]*?<\/mxCell>/)?.[0] || "";
+  const iconCell =
+    result.xml.match(/<mxCell ID='icon'[\s\S]*?(?:\/>|<\/mxCell>)/)?.[0] || "";
+  const summary = summarizeDrawioVisuals(result.xml);
+
+  assert.equal(result.applied, 1);
+  assert.match(plainCell, /style="[^"]*shape=rhombus/);
+  assert.doesNotMatch(plainCell, /\sStyle=/);
+  assert.doesNotMatch(iconCell, /fillColor=/);
+  assert.equal(summary.vertexCount, 2);
+  assert.equal(summary.edgeCount, 1);
+  assert.equal(summary.iconVertexCount, 1);
+  assert(summary.shapeTypes.includes("image"));
+  assert(summary.shapeTypes.includes("rhombus"));
+});
+
 test("visual defaults infer richer shapes for common non-icon labels", () => {
   const xml = [
     `<mxCell id="db" value="Customer DB" style="" vertex="1" parent="1" />`,

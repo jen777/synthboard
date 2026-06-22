@@ -151,8 +151,20 @@ function styleValue(style, key) {
   return styleEntries(style).find(([k]) => k === key)?.[1] || null;
 }
 
+function styleValueCaseInsensitive(style, key) {
+  const normalized = key.toLowerCase();
+  return (
+    styleEntries(style).find(([k]) => k.toLowerCase() === normalized)?.[1] || null
+  );
+}
+
 function hasStyleKey(style, key) {
   return styleEntries(style).some(([k]) => k === key);
+}
+
+function hasStyleKeyCaseInsensitive(style, key) {
+  const normalized = key.toLowerCase();
+  return styleEntries(style).some(([k]) => k.toLowerCase() === normalized);
 }
 
 function withStyleDefaults(style, defaults) {
@@ -178,11 +190,14 @@ function replaceStyleAttribute(tag, style) {
 }
 
 function isIconStyle(style) {
-  return styleValue(style, "shape") === "image" || hasStyleKey(style, "image");
+  return (
+    (styleValueCaseInsensitive(style, "shape") || "").toLowerCase() === "image" ||
+    hasStyleKeyCaseInsensitive(style, "image")
+  );
 }
 
 function isLibraryObjectStyle(style) {
-  const shape = styleValue(style, "shape") || "";
+  const shape = (styleValueCaseInsensitive(style, "shape") || "").toLowerCase();
   return (
     isIconStyle(style) ||
     shape.startsWith("mxgraph.") ||
@@ -240,7 +255,9 @@ export function applyVisualDefaults(xml) {
 
     const palette = VISUAL_PALETTE[vertexIndex % VISUAL_PALETTE.length];
     vertexIndex++;
-    const shape = hasStyleKey(style, "shape") ? null : inferVertexShape(attrs.value);
+    const shape = hasStyleKeyCaseInsensitive(style, "shape")
+      ? null
+      : inferVertexShape(attrs.value);
     const result = withStyleDefaults(style, {
       ...(shape ? { shape } : {}),
       rounded: "1",
@@ -281,20 +298,26 @@ export function summarizeDrawioVisuals(xml) {
     const isLibraryObject = isLibraryObjectStyle(style);
     if (isLibraryObject) iconVertexCount++;
 
-    const fillColor = styleValue(style, "fillColor");
-    const strokeColor = styleValue(style, "strokeColor");
+    const fillColor = styleValueCaseInsensitive(style, "fillColor");
+    const strokeColor = styleValueCaseInsensitive(style, "strokeColor");
     if (fillColor && fillColor !== "none") fillColors.add(fillColor.toLowerCase());
     if (strokeColor && strokeColor !== "none") {
       strokeColors.add(strokeColor.toLowerCase());
     }
-    if (isLibraryObject || fillColor || strokeColor || styleValue(style, "fontColor")) {
+    if (
+      isLibraryObject ||
+      fillColor ||
+      strokeColor ||
+      styleValueCaseInsensitive(style, "fontColor")
+    ) {
       styledVertexCount++;
     }
 
-    const shape = styleValue(style, "shape");
+    const shape = styleValueCaseInsensitive(style, "shape");
     if (shape) shapeTypes.add(shape.toLowerCase());
-    else if (styleValue(style, "rounded") === "1") shapeTypes.add("rounded");
-    else shapeTypes.add("rectangle");
+    else if (styleValueCaseInsensitive(style, "rounded") === "1") {
+      shapeTypes.add("rounded");
+    } else shapeTypes.add("rectangle");
 
     return tag;
   });

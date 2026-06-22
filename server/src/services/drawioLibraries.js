@@ -768,7 +768,7 @@ function applyGeometrySize(cellXml, size) {
 
 function styleDefaults(style, defaults) {
   return Object.entries(defaults)
-    .filter(([key]) => !hasStyleKey(style, key))
+    .filter(([key]) => !hasStyleKeyCaseInsensitive(style, key))
     .map(([key, value]) => `${key}=${value}`)
     .join(";");
 }
@@ -792,17 +792,17 @@ function mergedIconStyle(iconStyle, requestedStyle) {
 }
 
 function isExistingLibraryObjectStyle(style) {
-  const shape = styleValue(style, "shape") || "";
+  const shape = styleValueCaseInsensitive(style, "shape") || "";
   return (
-    shape === "image" ||
-    hasStyleKey(style, "image") ||
-    shape.startsWith("mxgraph.") ||
-    shape.startsWith("stencil(")
+    shape.toLowerCase() === "image" ||
+    hasStyleKeyCaseInsensitive(style, "image") ||
+    shape.toLowerCase().startsWith("mxgraph.") ||
+    shape.toLowerCase().startsWith("stencil(")
   );
 }
 
 function isContainerLikeStyle(style) {
-  const shape = styleValue(style, "shape") || "";
+  const shape = (styleValueCaseInsensitive(style, "shape") || "").toLowerCase();
   return shape === "swimlane" || shape === "group" || shape === "table";
 }
 

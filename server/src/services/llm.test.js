@@ -93,6 +93,33 @@ test("visual defaults preserve non-image drawio library object styles", () => {
   assert(summary.shapeTypes.includes("mxgraph.azure.storage"));
 });
 
+test("visual defaults and summary recognize mixed-case style keys", () => {
+  const xml = [
+    `<mxCell id="icon" value="Icon" style="Shape=Image;Image=data:image/png;base64,abc;" vertex="1" parent="1" />`,
+    `<mxCell id="library" value="Storage" style="Shape=mxgraph.azure.storage;Html=1;WhiteSpace=wrap;" vertex="1" parent="1" />`,
+    `<mxCell id="styled" value="Styled" style="Rounded=1;FillColor=#EAF2FF;StrokeColor=#5B7CFA;FontColor=#0F172A;" vertex="1" parent="1" />`,
+    `<mxCell id="decision" value="Approval decision" style="Shape=process;" vertex="1" parent="1" />`,
+  ].join("");
+
+  const result = applyVisualDefaults(xml);
+  const summary = summarizeDrawioVisuals(result.xml);
+  const decisionCell =
+    result.xml.match(/<mxCell id="decision"[\s\S]*?(?:\/>|<\/mxCell>)/)?.[0] || "";
+
+  assert.equal(summary.iconVertexCount, 2);
+  assert.equal(summary.styledVertexCount, 4);
+  assert.equal(summary.fillColorCount, 2);
+  assert.equal(summary.strokeColorCount, 2);
+  assert(summary.shapeTypes.includes("image"));
+  assert(summary.shapeTypes.includes("mxgraph.azure.storage"));
+  assert(summary.shapeTypes.includes("process"));
+  assert.doesNotMatch(decisionCell, /shape=rhombus/);
+  assert.doesNotMatch(
+    result.xml.match(/<mxCell id="icon"[\s\S]*?(?:\/>|<\/mxCell>)/)?.[0] || "",
+    /fillColor=/,
+  );
+});
+
 test("visual summary counts icons, styling, colors, and shape diversity", () => {
   const xml = `<mxCell id="n1" value="App" style="rounded=1;fillColor=#eaf2ff;strokeColor=#5b7cfa;fontColor=#0f172a;" vertex="1" parent="1" /><mxCell id="n2" value="Decision" style="shape=rhombus;fillColor=#fff7e6;strokeColor=#f59e0b;" vertex="1" parent="1" /><mxCell id="icon" value="Database" style="shape=image;image=data:image/png;base64,abc;" vertex="1" parent="1" /><mxCell id="e1" edge="1" source="n1" target="n2" parent="1" />`;
 

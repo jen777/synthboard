@@ -173,6 +173,21 @@ test("preserves requested label styling when adding icon label defaults", () => 
   assert.doesNotMatch(cell, /fontColor=#0f172a/);
 });
 
+test("does not duplicate label defaults when requested style key casing varies", () => {
+  const xml = `<mxCell id="n1" value="Database" style="synthIcon=lib.database;FontSize=16;FontColor=#ff0000;Align=left;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="80" height="40" as="geometry" /></mxCell>`;
+
+  const result = applyIconRowsToXml(xml, [ICON_ROWS[0]]);
+  const cell = result.xml.match(/<mxCell id="n1"[\s\S]*?<\/mxCell>/)?.[0] || "";
+
+  assert.match(cell, /shape=image/);
+  assert.match(cell, /FontSize=16/);
+  assert.match(cell, /FontColor=#ff0000/);
+  assert.match(cell, /Align=left/);
+  assert.doesNotMatch(cell, /fontSize=12/);
+  assert.doesNotMatch(cell, /fontColor=#0f172a/);
+  assert.doesNotMatch(cell, /align=center/);
+});
+
 test("explicit synthIcon placeholders are not counted as auto-eligible", () => {
   const xml = [
     `<mxCell id="explicit" value="Database" style="synthIcon=lib.database;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="80" height="40" as="geometry" /></mxCell>`,
@@ -266,6 +281,31 @@ test("auto-apply preserves existing non-image library object styles", () => {
   assert.equal(result.autoApplied.length, 0);
   assert.match(result.xml, /shape=mxgraph\.azure\.storage/);
   assert.doesNotMatch(result.xml, /shape=image/);
+});
+
+test("auto-apply recognizes mixed-case existing library and container styles", () => {
+  const xml = [
+    `<mxCell id="storage" value="Blob Storage" style="Shape=mxgraph.azure.storage;html=1;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="80" height="80" as="geometry" /></mxCell>`,
+    `<mxCell id="lane" value="Application team" style="Shape=swimlane;rounded=1;" vertex="1" parent="1"><mxGeometry x="140" y="20" width="240" height="140" as="geometry" /></mxCell>`,
+    `<mxCell id="db" value="Customer DB" style="" vertex="1" parent="1"><mxGeometry x="420" y="20" width="120" height="50" as="geometry" /></mxCell>`,
+  ].join("");
+
+  const result = applyIconRowsToXml(xml, [ICON_ROWS[0]], {
+    candidateIds: ["lib.database"],
+    targetApplied: 6,
+  });
+
+  assert.equal(result.autoApplied.length, 1);
+  assert.equal(result.autoEligible, 1);
+  assert.equal(result.autoSkipped.library_object, 1);
+  assert.equal(result.autoSkipped.container_style, 1);
+  assert.match(result.xml, /id="storage"[^>]*Shape=mxgraph\.azure\.storage/);
+  assert.match(result.xml, /id="lane"[^>]*Shape=swimlane/);
+  assert.doesNotMatch(
+    result.xml.match(/<mxCell id="storage"[\s\S]*?<\/mxCell>/)?.[0] || "",
+    /shape=image/,
+  );
+  assert.match(result.xml, /id="db"[\s\S]*shape=image/);
 });
 
 test("auto-apply preserves container vertices that own child cells", () => {

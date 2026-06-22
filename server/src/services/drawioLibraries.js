@@ -885,18 +885,29 @@ export async function applyIconEnhancements(xml, { candidateIds = [] } = {}) {
 }
 
 function scoreIconForLabel(icon, label) {
-  const labelTerms = expandLabelTerms(words(label));
+  const rawLabelTerms = unique(words(label));
+  const labelTerms = expandLabelTerms(rawLabelTerms);
   if (labelTerms.length === 0) return 0;
 
   const title = String(icon.title || "").toLowerCase();
+  const id = String(icon.id || "").toLowerCase();
   const searchText = String(icon.search_text || icon.title || "").toLowerCase();
   const titleTerms = unique(words(icon.title));
+  const idTerms = unique(words(icon.id));
   const searchTerms = unique(words(searchText));
   let score = 0;
 
   if (title && stripHtml(label).toLowerCase().includes(title)) score += 30;
   if (titleTerms.length > 0 && titleTerms.every((term) => labelTerms.includes(term))) {
     score += 24;
+  }
+
+  for (const term of rawLabelTerms) {
+    if (titleTerms.includes(term)) score += 22;
+    else if (title.includes(term)) score += 16;
+    if (idTerms.includes(term)) score += 18;
+    else if (id.includes(term)) score += 12;
+    if (searchTerms.includes(term)) score += 10;
   }
 
   for (const term of labelTerms) {

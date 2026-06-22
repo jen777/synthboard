@@ -672,6 +672,37 @@ test("auto-applies icons for common product and cloud vocabulary", () => {
   );
 });
 
+test("auto-apply prefers specific raw label matches over generic aliases", () => {
+  const xml = `<mxCell id="files" value="S3 files" style="rounded=1;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="120" height="50" as="geometry" /></mxCell>`;
+  const rows = [
+    {
+      id: "lib.storage",
+      title: "Storage",
+      search_text: "storage bucket file document",
+      style: "shape=image;image=data:image/png;base64,storage;aspect=fixed;",
+      width: 70,
+      height: 50,
+    },
+    {
+      id: "aws.s3-bucket",
+      title: "S3 Bucket",
+      search_text: "s3 bucket storage file object",
+      style: "shape=image;image=data:image/png;base64,s3;aspect=fixed;",
+      width: 70,
+      height: 50,
+    },
+  ];
+
+  const result = applyIconRowsToXml(xml, rows, {
+    candidateIds: rows.map((row) => row.id),
+    targetApplied: 6,
+  });
+
+  assert.equal(result.autoApplied.length, 1);
+  assert.equal(result.autoApplied[0].id, "aws.s3-bucket");
+  assert.match(result.xml, /image=data:image\/png;base64,s3/);
+});
+
 test("prioritizes preset and general icon terms before long source text", () => {
   const longSource = Array.from({ length: 100 }, (_, index) => `sourceword${index}`).join(
     " ",

@@ -199,17 +199,11 @@ function generationQualityFlags(g) {
   if (g.status === "failed") return ["failed"];
 
   const vertices = Number(g.visual_vertex_count || 0);
-  const iconCoverage = vertices
-    ? Number(g.visual_icon_vertex_count || 0) / vertices
-    : 0;
   const styledCoverage = vertices
     ? Number(g.visual_styled_vertex_count || 0) / vertices
     : 0;
   const flags = [];
 
-  if (Number(g.icon_candidate_count || 0) > 0 && iconCoverage < 0.2) {
-    flags.push("low icon coverage");
-  }
   if (vertices > 0 && styledCoverage < 0.6) flags.push("low styled coverage");
   if (vertices >= 4 && Number(g.visual_fill_color_count || 0) < 2) {
     flags.push("low color variety");

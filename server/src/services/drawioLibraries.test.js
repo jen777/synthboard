@@ -260,10 +260,10 @@ test("explicit synthIcon placeholders are not counted as auto-eligible", () => {
     candidateIds: ICON_ROWS.map((row) => row.id),
   });
 
-  assert.equal(result.applied.length, 2);
-  assert.equal(result.autoApplied.length, 1);
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.autoApplied.length, 0);
   assert.equal(result.autoEligible, 1);
-  assert.equal(result.autoTarget, 1);
+  assert.equal(result.autoTarget, 0);
   assert.equal(result.autoSkipped.explicit_placeholder, 1);
 });
 
@@ -370,7 +370,7 @@ test("auto-apply recognizes mixed-case existing library and container styles", (
   assert.match(result.xml, /id="db"[\s\S]*shape=image/);
 });
 
-test("auto-apply preserves container vertices that own child cells", () => {
+test("targeted auto-apply preserves container vertices that own child cells", () => {
   const xml = [
     `<mxCell id="group" value="Application team" style="swimlane=1;shape=swimlane;rounded=1;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="360" height="180" as="geometry" /></mxCell>`,
     `<mxCell id="service" value="Backend service" style="rounded=1;" vertex="1" parent="group"><mxGeometry x="40" y="80" width="120" height="50" as="geometry" /></mxCell>`,
@@ -395,9 +395,10 @@ test("auto-apply preserves container vertices that own child cells", () => {
     },
   ];
 
-  assert.equal(autoIconTargetForXml(xml), 2);
+  assert.equal(autoIconTargetForXml(xml), 0);
   const result = applyIconRowsToXml(xml, rows, {
     candidateIds: rows.map((row) => row.id),
+    targetApplied: 2,
   });
 
   assert.equal(result.autoApplied.length, 2);
@@ -482,7 +483,7 @@ test("uses the requested target even when there are fewer unique candidates", ()
   assert.equal(result.autoApplied.length, 3);
 });
 
-test("scales the automatic icon target for larger diagrams", () => {
+test("defaults the automatic icon target to zero for larger diagrams", () => {
   const labels = [
     "Frontend application",
     "Backend service",
@@ -546,9 +547,10 @@ test("scales the automatic icon target for larger diagrams", () => {
     },
   ];
 
-  assert.equal(autoIconTargetForXml(xml), 8);
+  assert.equal(autoIconTargetForXml(xml), 0);
   const result = applyIconRowsToXml(xml, rows, {
     candidateIds: rows.map((row) => row.id),
+    targetApplied: 8,
   });
 
   assert.equal(result.autoApplied.length, 8);
@@ -825,7 +827,7 @@ test("builds searchable aliases for common cloud library object names", () => {
   );
 });
 
-test("icon prompt describes image and drawio object usage", () => {
+test("icon prompt keeps library object usage optional and sparse", () => {
   const prompt = buildIconPrompt([
     {
       id: "azure.storage",
@@ -839,7 +841,10 @@ test("icon prompt describes image and drawio object usage", () => {
     },
   ]);
 
-  assert.match(prompt, /icon\/object set context/);
+  assert.match(prompt, /Optional draw\.io icon\/object context/);
+  assert.match(prompt, /Prefer standard draw\.io shapes first/);
+  assert.match(prompt, /Target 0-2 library-decorated vertices/);
+  assert.match(prompt, /Do not decorate ordinary services/);
   assert.match(prompt, /image icons or draw\.io object\/stencil styles/);
   assert.match(prompt, /synthIcon=<object id>/);
   assert.match(prompt, /exact library style/);

@@ -125,10 +125,10 @@ if (iconRows.length !== 6) failures.push("expected 6 extracted library objects")
 if (iconRows.some((row) => !row.style || !row.cellXml)) {
   failures.push("expected uploaded library objects to include decoded styles");
 }
-if (summary.iconsApplied < 8) failures.push("expected at least 8 applied icons");
-if (summary.iconsAutoApplied < 7) failures.push("expected at least 7 auto-applied icons");
+if (summary.iconsApplied !== 1) failures.push("expected exactly 1 explicit applied icon");
+if (summary.iconsAutoApplied !== 0) failures.push("expected auto-applied icons to be disabled by default");
 if (summary.iconAutoEligible < 12) failures.push("expected at least 12 auto-eligible vertices");
-if (summary.iconAutoTarget < 8) failures.push("expected auto target to scale above 6");
+if (summary.iconAutoTarget !== 0) failures.push("expected default auto target to be 0");
 if (summary.iconAutoCandidateCount < 6) failures.push("expected 6 auto icon candidates");
 if (summary.iconAutoSkipped.explicit_placeholder !== 1) {
   failures.push("expected explicit synthIcon placeholder to be excluded from auto eligibility");
@@ -140,15 +140,15 @@ if (!result.xml.includes('width="109" height="109"')) {
 if (!result.xml.includes("shape=rhombus")) {
   failures.push("expected inferred decision shape");
 }
-if (result.visualSummary.iconVertexCount < 8) {
-  failures.push("expected at least 8 icon/image vertices");
+if (result.visualSummary.iconVertexCount !== 2) {
+  failures.push("expected only explicit and preserved library object icon/image vertices");
 }
 if (!result.visualSummary.shapeTypes.includes("mxgraph.azure.storage")) {
   failures.push("expected preserved mxgraph library object");
 }
 const teamCell = result.xml.match(/<mxCell id="team"[\s\S]*?<\/mxCell>/)?.[0] || "";
 if (!teamCell.includes("shape=swimlane") || teamCell.includes("shape=image")) {
-  failures.push("expected auto-apply to preserve parent container shape");
+  failures.push("expected default processing to preserve parent container shape");
 }
 if (result.visualSummary.styledVertexCount < 4) {
   failures.push("expected library objects to count as styled vertices");

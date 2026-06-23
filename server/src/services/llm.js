@@ -51,7 +51,7 @@ OUTPUT CONTRACT — follow exactly:
 - Provide explicit geometry (mxGeometry x/y/width/height) for every vertex so the diagram renders without auto-layout. Avoid overlapping shapes; leave generous spacing.
 - Use readable labels derived from the user's content. Never invent facts that aren't supported by the input; if the input is sparse, produce a faithful, minimal diagram.
 - Use tasteful styling (fill colors, rounded corners, font sizes) appropriate to the diagram type.
-- Make diagrams presentation-ready: use meaningful colors, varied shapes, containers, and visual hierarchy. When icon/object context is provided, use matching library icons on important concrete nodes and leave enough geometry for them to render cleanly.
+- Make diagrams presentation-ready with meaningful colors, varied standard draw.io shapes, containers, and visual hierarchy. Prefer built-in draw.io shapes and basic objects over custom icon/image libraries.
 
 Example skeleton (structure only — adapt content, styles, and geometry):
 <mxfile host="synthboard">
@@ -76,9 +76,9 @@ Example skeleton (structure only — adapt content, styles, and geometry):
 
 const VISUAL_DESIGN_GUIDANCE = `Visual design requirements:
 - Build a polished diagram, not a plain wireframe. Use a restrained but visible palette with 3-5 complementary colors, consistent stroke colors, and high text contrast.
-- Use diagram-appropriate shapes and objects: containers/boundaries for groups, cylinders for data stores, diamonds for decisions, cards/sections for summaries, lanes/columns where useful, and icon/image vertices when library context is available.
-- Make hierarchy obvious with larger primary nodes, smaller supporting nodes, section headers, whitespace, and aligned rows/columns. Avoid overlapping text, icons, or connectors.
-- When icon context is available, use icons for important concrete nodes and choose sizes intentionally with synthIconSize, synthIconScale, synthIconWidth, or synthIconHeight when a default size would be too small or too large.`;
+- Use diagram-appropriate standard draw.io shapes and basic objects: rounded/process rectangles for work or services, cylinders for data stores, diamonds for decisions, document shapes for files, clouds for networks, actor shapes for users, hexagons for queues/events, swimlanes for responsibility, and containers/boundaries for groups.
+- Make hierarchy obvious with larger primary nodes, smaller supporting nodes, section headers, whitespace, and aligned rows/columns. Avoid overlapping text, shapes, or connectors.
+- Do not use custom image icons, pasted image data, or third-party stencil libraries unless an explicit icon context is provided. When in doubt, use a standard shape with a clear label.`;
 const VISUAL_PALETTE = [
   { fillColor: "#eaf2ff", strokeColor: "#5b7cfa" },
   { fillColor: "#e8fbf8", strokeColor: "#14b8a6" },
@@ -229,7 +229,7 @@ function inferVertexShape(label) {
   if (hasAny("database", "db", "sql", "storage", "cache", "warehouse")) {
     return "cylinder";
   }
-  if (hasAny("decision", "condition", "choice", "if", "gateway", "branch")) {
+  if (hasAny("decision", "condition", "choice", "if", "branch")) {
     return "rhombus";
   }
   if (hasAny("actor", "person", "user", "customer", "admin", "manager")) {
@@ -246,6 +246,25 @@ function inferVertexShape(label) {
   }
   if (hasAny("cloud", "cdn", "network", "vnet", "dns", "internet")) {
     return "cloud";
+  }
+  if (
+    hasAny(
+      "api",
+      "app",
+      "application",
+      "backend",
+      "frontend",
+      "gateway",
+      "job",
+      "process",
+      "service",
+      "step",
+      "system",
+      "task",
+      "worker",
+    )
+  ) {
+    return "process";
   }
   return null;
 }
@@ -387,9 +406,14 @@ export async function postProcessDrawioXml(
   };
   try {
     const candidateIds = iconCandidates.map((c) => c.id);
-    const processed = iconRows
-      ? applyIconRowsToXml(xml, iconRows, { candidateIds })
-      : await applyIconEnhancements(xml, { candidateIds });
+    let processed;
+    if (iconRows) {
+      processed = applyIconRowsToXml(xml, iconRows, { candidateIds });
+    } else if (candidateIds.length > 0) {
+      processed = await applyIconEnhancements(xml, { candidateIds });
+    } else {
+      processed = applyIconRowsToXml(xml, [], { targetApplied: 0 });
+    }
     nextXml = processed.xml;
     iconMeta = {
       applied: processed.applied,

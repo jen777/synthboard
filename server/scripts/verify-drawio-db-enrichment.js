@@ -141,16 +141,17 @@ try {
     summary.outputPath = process.env.DRAWIO_VERIFY_OUTPUT;
   }
 
-  if (summary.iconsApplied < 6) failures.push("expected at least 6 DB-backed applied icons");
-  if (summary.iconsAutoApplied < 5) {
-    failures.push("expected at least 5 DB-backed auto-applied icons");
+  if (summary.iconsApplied !== 1) failures.push("expected exactly 1 DB-backed explicit icon");
+  if (summary.iconsAutoApplied !== 0) {
+    failures.push("expected DB-backed auto-applied icons to be disabled by default");
   }
   if (summary.iconsMissing !== 0) failures.push("expected no missing DB-backed icons");
   if (summary.iconAutoCandidateCount < 6) {
     failures.push("expected at least 6 DB-backed auto icon candidates");
   }
-  if (summary.visualSummary.iconVertexCount < 6) {
-    failures.push("expected at least 6 icon/image vertices after DB-backed enrichment");
+  if (summary.iconAutoTarget !== 0) failures.push("expected default DB-backed auto target to be 0");
+  if (summary.visualSummary.iconVertexCount !== 1) {
+    failures.push("expected only the explicit icon/image vertex after DB-backed enrichment");
   }
 } catch (err) {
   failures.push(err?.message || String(err));

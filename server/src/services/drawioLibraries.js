@@ -4,15 +4,16 @@ import { query, pool } from "../db.js";
 
 const MAX_PROMPT_OBJECTS = 24;
 const MAX_SEARCH_ROWS = 5000;
+const ENABLE_GENERATION_ICON_CATALOG = ["1", "true", "yes"].includes(
+  String(process.env.DRAWIO_ICON_CATALOG_GENERATION || "").toLowerCase(),
+);
 const ICON_SIZE_PRESETS = {
   small: 0.75,
   medium: 1,
   large: 1.35,
   hero: 1.7,
 };
-const AUTO_ICON_TARGET = 6;
-const AUTO_ICON_MAX_TARGET = 10;
-const AUTO_ICON_TARGET_RATIO = 0.6;
+const AUTO_ICON_DEFAULT_TARGET = 0;
 const AUTO_ICON_MIN_SCORE = 12;
 const AUTO_ICON_MAX_REUSE = 3;
 const MAX_PROMPT_OBJECTS_PER_TITLE = 2;
@@ -649,6 +650,7 @@ export function buildIconSearchText({ preset, sourceText, title }) {
 }
 
 export function shouldUseIconCatalog({ preset, sourceText, title }) {
+  if (!ENABLE_GENERATION_ICON_CATALOG) return false;
   return words(`${title || ""} ${preset || ""} ${sourceText || ""}`).length > 0;
 }
 
@@ -682,11 +684,11 @@ export function buildIconPrompt(candidates) {
     return `- ${c.id}: ${c.title} (${c.provider || c.library_name}, ${c.style_family || "same set"}${size}${keywords})`;
   });
 
-  return `Available draw.io icon/object set context:
-Prefer one visual set per diagram. Use "${dominant.library_name}" first and only mix sets if a required object is missing.
-Use the listed library objects to make the diagram visually rich: decorate the primary concrete vertices such as services, actors, systems, datastores, queues, teams, tools, documents, milestones, or major concepts. Target 4-10 library-decorated vertices when enough listed objects fit. Use ordinary shapes for abstract control-flow details that do not match the listed objects.
+  return `Optional draw.io icon/object context:
+Prefer standard draw.io shapes first: rounded rectangles, process shapes, cylinders, diamonds, documents, clouds, actors, hexagons, swimlanes, groups, and simple connectors. Use "${dominant.library_name}" only when an exact listed object is clearly better than a standard shape.
+Use listed library objects sparingly. Target 0-2 library-decorated vertices, only for unmistakable concrete nodes that would otherwise be ambiguous. Do not decorate ordinary services, datastores, actors, teams, documents, milestones, or control-flow details when a standard draw.io shape communicates the role.
 Listed objects can be image icons or draw.io object/stencil styles. When a listed object fits a vertex, add synthIcon=<object id> to that vertex's style; the server will replace it with the exact library style. Keep the node label in value. Do not invent object ids.
-You may request object size in the same style with synthIconSize=small|medium|large|hero, synthIconScale=0.5-2.5, or explicit synthIconWidth=<px>;synthIconHeight=<px>. Use larger objects for central/primary concepts and smaller objects for supporting nodes.
+You may request object size in the same style with synthIconSize=small|medium|large|hero, synthIconScale=0.5-2.5, or explicit synthIconWidth=<px>;synthIconHeight=<px>. Keep library objects secondary to the main shape-based layout.
 Object ids:
 ${lines.join("\n")}`;
 }
@@ -1016,11 +1018,7 @@ function countAutoIconEligibleVertices(xml) {
 export function autoIconTargetForXml(xml) {
   const eligible = countAutoIconEligibleVertices(xml);
   if (eligible === 0) return 0;
-  return Math.min(
-    AUTO_ICON_MAX_TARGET,
-    eligible,
-    Math.max(AUTO_ICON_TARGET, Math.ceil(eligible * AUTO_ICON_TARGET_RATIO)),
-  );
+  return AUTO_ICON_DEFAULT_TARGET;
 }
 
 function summarizeAutoIconEligibility(xml) {

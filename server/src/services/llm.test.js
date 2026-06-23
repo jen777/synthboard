@@ -15,7 +15,7 @@ const {
   summarizeIconCandidate,
 } = await import("./llm.js");
 
-test("generation prompt includes visual design and icon sizing requirements", () => {
+test("generation prompt includes shape-first visual design requirements", () => {
   const prompt = buildGenerationPrompt({
     presetDef: {
       label: "System Architecture",
@@ -28,9 +28,10 @@ test("generation prompt includes visual design and icon sizing requirements", ()
 
   assert.match(prompt, /Visual design requirements:/);
   assert.match(prompt, /3-5 complementary colors/);
-  assert.match(prompt, /containers\/boundaries for groups/);
-  assert.match(prompt, /synthIconSize/);
-  assert.match(prompt, /synthIconWidth/);
+  assert.match(prompt, /standard draw\.io shapes/);
+  assert.match(prompt, /cylinders for data stores/);
+  assert.match(prompt, /diamonds for decisions/);
+  assert.match(prompt, /Do not use custom image icons/);
   assert.match(prompt, /Icon ids:\n- azure\.database: Database/);
   assert.match(prompt, /Return only the draw\.io <mxfile> XML\./);
 });
@@ -112,6 +113,7 @@ test("visual defaults infer richer shapes for common non-icon labels", () => {
     `<mxCell id="cloud" value="Cloud network" style="" vertex="1" parent="1" />`,
     `<mxCell id="user" value="Customer user" style="" vertex="1" parent="1" />`,
     `<mxCell id="team" value="Operations team" style="" vertex="1" parent="1" />`,
+    `<mxCell id="service" value="API service" style="" vertex="1" parent="1" />`,
   ].join("");
 
   const result = applyVisualDefaults(xml);
@@ -123,6 +125,7 @@ test("visual defaults infer richer shapes for common non-icon labels", () => {
   assert.match(result.xml, /id="cloud"[^>]*shape=cloud/);
   assert.match(result.xml, /id="user"[^>]*shape=umlActor/);
   assert.match(result.xml, /id="team"[^>]*shape=ellipse/);
+  assert.match(result.xml, /id="service"[^>]*shape=process/);
 });
 
 test("visual defaults preserve existing styles and skip icon image vertices", () => {
@@ -214,7 +217,7 @@ test("icon candidate telemetry keeps admin-readable library details", () => {
   );
 });
 
-test("local post-processing pipeline produces icon-rich styled XML from model-like output", async () => {
+test("local post-processing pipeline defaults to shape-rich styled XML", async () => {
   const modelXml = [
     `<mxCell id="api" value="API Gateway" style="synthIcon=lib.gateway;synthIconSize=hero;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="160" height="50" as="geometry" /></mxCell>`,
     `<mxCell id="db" value="Customer DB" style="" vertex="1" parent="1"><mxGeometry x="240" y="20" width="160" height="50" as="geometry" /></mxCell>`,
@@ -246,17 +249,18 @@ test("local post-processing pipeline produces icon-rich styled XML from model-li
   });
   const summary = result.visualSummary;
 
-  assert.equal(result.iconMeta.applied.length, 2);
-  assert.equal(result.iconMeta.autoApplied.length, 1);
+  assert.equal(result.iconMeta.applied.length, 1);
+  assert.equal(result.iconMeta.autoApplied.length, 0);
   assert.equal(result.iconMeta.autoEligible, 2);
-  assert.equal(result.iconMeta.autoTarget, 2);
+  assert.equal(result.iconMeta.autoTarget, 0);
   assert.equal(result.iconMeta.autoCandidateCount, 2);
   assert.match(result.xml, /id="api"[\s\S]*?width="109" height="109"/);
-  assert.match(result.xml, /id="db"[\s\S]*?shape=image/);
+  assert.match(result.xml, /id="db"[^>]*shape=cylinder/);
   assert.match(result.xml, /id="decision"[^>]*shape=rhombus/);
   assert.equal(summary.vertexCount, 3);
-  assert.equal(summary.iconVertexCount, 2);
-  assert(summary.fillColorCount >= 1);
+  assert.equal(summary.iconVertexCount, 1);
+  assert(summary.fillColorCount >= 2);
+  assert(summary.shapeTypes.includes("cylinder"));
   assert(summary.shapeTypes.includes("image"));
   assert(summary.shapeTypes.includes("rhombus"));
 });

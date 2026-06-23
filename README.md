@@ -11,8 +11,8 @@ OpenAI-compatible API).
   start as Sketcher. Each level's visualization quota and input-size limit, plus
   a user's level, are editable from the admin panel.
 - **Embedded draw.io viewer** + one-click `.drawio` export
-- **Optional draw.io icon library catalog** for richer generated architecture
-  diagrams using indexed custom shape libraries
+- **Shape-first draw.io generation** with optional admin-managed icon catalog
+  support for deliberate, sparse custom object use
 - **Node.js + Express + Postgres + React**, fully Dockerized
 
 ---
@@ -103,8 +103,10 @@ sequence, ER, mind map, infographic). The response is parsed to a valid
 ### Draw.io icon libraries
 
 SynthBoard can index public or local draw.io custom libraries (`<mxlibrary>`
-XML files) and use them during generation without putting the full icon payloads
-into the model prompt.
+XML files), but normal generation is shape-first by default. The LLM is guided
+to use standard draw.io shapes and basic built-in objects such as rounded
+rectangles, process shapes, cylinders, diamonds, document shapes, clouds,
+actors, hexagons, swimlanes, groups, and simple connectors.
 
 Admins can upload libraries from **Admin panel → Icon libraries**. The screen
 shows each indexed library, object counts, and object names. Uploads accept
@@ -125,16 +127,22 @@ npm run ingest:drawio-libraries -- --manifest ./drawio-libraries/sources.example
 ```
 
 The ingester stores compact searchable metadata plus the exact draw.io object
-styles in Postgres. During generation, the server retrieves a candidate set for
-the requested preset, title, and source text, asks the LLM to add
-`synthIcon=<icon id>` to matching vertex styles, then post-processes the final
-XML and replaces those placeholders with the exact draw.io image styles. The LLM
-can also request size changes with `synthIconSize=small|medium|large|hero`,
-`synthIconScale=0.5-2.5`, or explicit `synthIconWidth=<px>` and
-`synthIconHeight=<px>` style keys. Width-only and height-only requests preserve
-the object's native aspect ratio. When an icon is selected without a size
-request, the post-processor applies the object's native medium geometry so the
-library visual is not stretched into a generic model-generated rectangle.
+styles in Postgres. The generation path no longer consults the custom catalog by
+default; set `DRAWIO_ICON_CATALOG_GENERATION=true` only if you deliberately want
+to reintroduce catalog candidates into the LLM prompt. Even then, the prompt
+treats library objects as optional and sparse: use standard shapes first, and
+decorate at most 0-2 unmistakable concrete nodes when an exact object is clearly
+better than a shape.
+
+If explicit icon placeholders are supplied by an opt-in prompt or a direct
+post-processing call, the server can replace `synthIcon=<icon id>` with the
+exact draw.io image/object style. The LLM can also request size changes with
+`synthIconSize=small|medium|large|hero`, `synthIconScale=0.5-2.5`, or explicit
+`synthIconWidth=<px>` and `synthIconHeight=<px>` style keys. Width-only and
+height-only requests preserve the object's native aspect ratio. When an icon is
+selected without a size request, the post-processor applies the object's native
+medium geometry so the library visual is not stretched into a generic
+model-generated rectangle.
 The style parser tolerates model output with whitespace or casing variations
 around these keys, such as `synthIcon = azure.database` or `synthicon=...`.
 Replaced icons receive readable label defaults (wrapped HTML labels below the
@@ -157,33 +165,26 @@ lookup still falls back to substring matching for the same candidate search.
 Prompt candidates are also lightly de-duplicated by object title so repeated
 variants from one library do not crowd out distinct concepts like databases,
 queues, storage, users, or services.
-The generation prompt describes candidates as icon/object library entries,
-including image icons and draw.io stencil/object styles, and tells the model to
-use `synthIcon=<object id>` so the server can apply the exact stored style.
-Exact object IDs are preferred, but the post-processor can resolve explicit
-placeholders against the fetched candidate set by normalized object ID or title
-when the model emits a minor punctuation/case variant.
+When icon catalog generation is enabled, exact object IDs are preferred, but the
+post-processor can resolve explicit placeholders against the fetched candidate
+set by normalized object ID or title when the model emits a minor
+punctuation/case variant. Automatic custom-icon fallback is disabled by default:
+the automatic target is `0`, so the server does not decorate plain nodes with
+catalog icons just because their labels match. Direct utility calls can still
+pass an explicit target to exercise targeted auto-apply.
 
-If the model underuses the available catalog, the post-processor makes a bounded
-best-effort pass over non-image vertices and auto-applies matching candidate
-icons by label. The automatic target scales with the number of eligible
-vertices, up to 10 library-decorated nodes, so larger diagrams are not capped at
-a small fixed icon count. Automatic replacement skips existing library objects
-and parent/container vertices, preserving swimlanes, groups, and layout
-boundaries while decorating concrete leaf nodes. If no catalog exists or no
-match is found, generation falls back to ordinary draw.io shapes. A second
-visual-default pass adds missing fill, stroke, text, and rounded-corner styles to
-plain non-icon vertices, and adds connector defaults such as orthogonal routing,
-readable stroke color, line width, and arrows to under-styled edges, so sparse
-model output still renders as a colored, presentation-ready diagram. It also
-infers common draw.io shapes for unmatched non-icon labels, such as cylinders
-for databases/storage, rhombuses for decisions, document shapes for files, and
-hexagons for queues/events, actor shapes for users/people, and ellipses for
+The main enrichment path is now standard-shape based. A visual-default pass adds
+missing fill, stroke, text, and rounded-corner styles to plain non-icon vertices,
+and adds connector defaults such as orthogonal routing, readable stroke color,
+line width, and arrows to under-styled edges. It also infers common draw.io
+shapes for unmatched non-icon labels, such as cylinders for databases/storage,
+rhombuses for decisions, document shapes for files, hexagons for queues/events,
+actor shapes for users/people, clouds for network/cloud labels, and ellipses for
 teams/groups.
 
 Generation runs these enrichment stages as one server-side post-processing
-pipeline: explicit icon replacement, automatic icon fallback, visual defaults,
-shape inference, and final visual-summary telemetry.
+pipeline: explicit icon cleanup/replacement when candidates are deliberately
+provided, visual defaults, shape inference, and final visual-summary telemetry.
 Exact library object styles such as `shape=mxgraph...` are preserved without
 generic fill/stroke defaults and counted as library visual objects in summary
 metrics. They also count toward styled coverage, because the library style is
@@ -203,8 +204,8 @@ npm run verify:drawio-enrichment
 
 The command builds sample uploaded-library-format `<mxlibrary>` XML, extracts the
 compressed draw.io object styles, processes sample draw.io XML with those
-objects, and fails if explicit icon replacement, semantic auto-apply, icon
-sizing, fallback shapes, or visual summary telemetry regress.
+objects, and fails if explicit icon replacement, disabled default auto-apply,
+icon sizing, fallback shapes, or visual summary telemetry regress.
 Set `DRAWIO_VERIFY_OUTPUT=/tmp/synthboard-enriched.drawio` to also write the
 enriched draw.io XML for visual inspection in diagrams.net.
 
@@ -221,23 +222,19 @@ then removes the temporary library. If `DATABASE_URL` is not set it reports a
 clean skip.
 
 Admins can inspect generation behavior in **Admin panel → Generation report**.
-The icon metrics show when catalog lookup happened, how many icons were applied
-from explicit model placeholders, how many were auto-applied by the server, and
-which placeholders missed. Auto-target metrics show how many vertices were
-eligible for automatic library decoration, how many candidate objects were
-available, and how close the server got to the target. Explicit `synthIcon`
-placeholders are tracked separately and do not consume the automatic target.
+The icon metrics show whether catalog lookup happened, how many icons were
+applied from explicit placeholders, how many were auto-applied by a deliberate
+targeted pass, and which placeholders missed. Auto-target metrics remain for
+diagnostics, but the default target is `0`.
 Candidate hover details include the offered object title, provider/library,
 style family, and native size. The visual-default metrics show when the server
 had to style otherwise plain nodes after generation. The visual summary metrics
 count final vertices, icon/image nodes, styled nodes, distinct fill colors, and
 distinct shape types.
-Icon coverage and styled coverage are the fastest effectiveness checks: they
-show whether the final rendered XML is actually using library visuals and
-presentation styling, not just producing valid XML.
-Recent generations also show a Quality flag when the final XML has low icon
-coverage despite candidates, low styled-node coverage, low color variety, or low
-shape variety.
+Styled coverage, color variety, and shape variety are the fastest effectiveness
+checks: they show whether the final rendered XML is presentation-ready, not just
+valid XML. Recent generations also show a Quality flag when the final XML has
+low styled-node coverage, low color variety, or low shape variety.
 
 Admins can also use the API directly: `GET /api/admin/icon-libraries`,
 `GET /api/admin/icon-libraries/:id/objects`,

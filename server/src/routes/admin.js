@@ -15,6 +15,15 @@ import {
   listIconObjects,
   searchIconObjects,
 } from "../services/drawioLibraries.js";
+import {
+  createModel,
+  createProvider,
+  deleteModel,
+  deleteProvider,
+  listAdminCatalog,
+  updateModel,
+  updateProvider,
+} from "../services/llmCatalog.js";
 
 const router = Router();
 const MAX_ICON_LIBRARY_BYTES = 10 * 1024 * 1024;
@@ -137,12 +146,13 @@ router.get("/generations", async (req, res, next) => {
          FROM diagram_generations`,
       ),
       query(
-        `SELECT COALESCE(model, '—') AS model,
+        `SELECT COALESCE(meta->>'provider', '—') AS provider,
+                COALESCE(model, '—') AS model,
                 COUNT(*)::int                          AS count,
                 COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
                 ROUND(AVG(generation_ms))::int         AS avg_generation_ms
            FROM diagram_generations
-          GROUP BY model
+          GROUP BY COALESCE(meta->>'provider', '—'), model
           ORDER BY count DESC`,
       ),
       query(
@@ -191,6 +201,7 @@ router.get("/generations", async (req, res, next) => {
       ),
       query(
         `SELECT g.id, g.preset, g.model, g.status,
+                COALESCE(g.meta->>'provider', '—') AS provider,
                 g.generation_ms, g.first_token_ms, g.diagram_bytes,
                 g.prompt_tokens, g.completion_tokens, g.total_tokens,
                 g.temperature, g.top_p, g.finish_reason, g.error, g.created_at,
@@ -321,6 +332,82 @@ router.delete("/icon-libraries/:id", async (req, res, next) => {
     if (!deleted) return res.status(404).json({ error: "Not found" });
     res.json({ ok: true });
   } catch (err) {
+    next(err);
+  }
+});
+
+// ── LLM providers and models ──────────────────────────────────
+router.get("/llm-catalog", async (req, res, next) => {
+  try {
+    res.json({
+      providers: await listAdminCatalog(),
+      levels: LEVELS.map(({ level, name }) => ({ level, name })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function catalogError(res, err) {
+  return res.status(err.status || 400).json({ error: err.message });
+}
+
+router.post("/llm-providers", async (req, res, next) => {
+  try {
+    const provider = await createProvider(req.body || {});
+    res.status(201).json({ provider });
+  } catch (err) {
+    if (err.status) return catalogError(res, err);
+    next(err);
+  }
+});
+
+router.patch("/llm-providers/:id", async (req, res, next) => {
+  try {
+    const provider = await updateProvider(req.params.id, req.body || {});
+    res.json({ provider });
+  } catch (err) {
+    if (err.status) return catalogError(res, err);
+    next(err);
+  }
+});
+
+router.delete("/llm-providers/:id", async (req, res, next) => {
+  try {
+    await deleteProvider(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.status) return catalogError(res, err);
+    next(err);
+  }
+});
+
+router.post("/llm-models", async (req, res, next) => {
+  try {
+    const model = await createModel(req.body || {});
+    res.status(201).json({ model });
+  } catch (err) {
+    if (err.status) return catalogError(res, err);
+    next(err);
+  }
+});
+
+router.patch("/llm-models/:id", async (req, res, next) => {
+  try {
+    const model = await updateModel(req.params.id, req.body || {});
+    res.json({ model });
+  } catch (err) {
+    if (err.status) return catalogError(res, err);
+    next(err);
+  }
+});
+
+router.delete("/llm-models/:id", async (req, res, next) => {
+  try {
+    await deleteModel(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.status) return catalogError(res, err);
     next(err);
   }
 });

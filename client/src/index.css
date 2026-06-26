@@ -341,7 +341,19 @@ button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--da
   white-space: nowrap;
 }
 
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.llm-provider {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+.llm-provider:first-of-type { border-top: 0; padding-top: 4px; }
+
+.tabs {
+  display: flex; gap: 4px; overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
 .tab {
   border: none; border-bottom: 2px solid transparent; border-radius: 0;
   background: transparent; color: var(--muted); padding: 10px 16px;

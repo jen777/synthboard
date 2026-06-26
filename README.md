@@ -2,14 +2,16 @@
 
 Turn notes, meeting transcripts, and documents into **draw.io (diagrams.net)**
 visualizations — flowcharts, UML, ER diagrams, mind maps, and infographics —
-powered by an LLM (NVIDIA-hosted `minimaxai/minimax-m2.7` via the
-OpenAI-compatible API).
+powered by admin-configured OpenAI-compatible LLM providers and models.
 
 - **Google sign-in** (OAuth 2.0)
 - **Tiered account levels** — Sketcher (5 visualizations / 7k input chars),
   Creator (20 / 8.5k), Architect (50 / 10k), Visionary (150 / 15k); new users
   start as Sketcher. Each level's visualization quota and input-size limit, plus
   a user's level, are editable from the admin panel.
+- **Level-gated AI model catalog** — provider endpoints and models live in
+  Postgres, provider keys remain in environment variables, and users can select
+  only models enabled for their account level.
 - **Embedded draw.io viewer** + one-click `.drawio` export
 - **Shape-first draw.io generation** with optional admin-managed icon catalog
   support for deliberate, sparse custom object use
@@ -25,7 +27,7 @@ OpenAI-compatible API).
 │ (nginx + │                     │ (Express │        │            │
 │  React)  │ ◀───── SPA ──────── │  + pg)   │        └────────────┘
 └──────────┘                     └────┬─────┘
-   :8080                              │ NVIDIA LLM API
+   :8080                              │ OpenAI-compatible LLM providers
                                       ▼
                               draw.io XML generation
 ```
@@ -33,7 +35,8 @@ OpenAI-compatible API).
 - The **client** container (nginx) serves the built React SPA and reverse-proxies
   `/api/*` and `/auth/*` to the server — so session cookies stay same-origin.
 - The **server** handles Google OAuth, sessions (stored in Postgres), quota
-  enforcement, and diagram generation via the OpenAI SDK (NVIDIA endpoint).
+  enforcement, model-level access checks, and diagram generation via the
+  OpenAI SDK.
 - Diagrams render in the browser using the hosted diagrams.net viewer.
 
 ## Prerequisites
@@ -42,13 +45,14 @@ OpenAI-compatible API).
    [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
    Set the authorized redirect URI to `http://localhost:8080/auth/google/callback`
    (match your `APP_URL`).
-2. **NVIDIA API key** — from [build.nvidia.com](https://build.nvidia.com).
+2. **At least one OpenAI-compatible provider API key** — the initial catalog
+   uses NVIDIA from [build.nvidia.com](https://build.nvidia.com).
 
 ## Quick start (Docker)
 
 ```bash
 cp .env.example .env
-# Fill in GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, NVIDIA_API_KEY,
+# Fill in GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, at least one provider key,
 # and a strong SESSION_SECRET (openssl rand -hex 32).
 
 docker compose up --build
@@ -58,14 +62,17 @@ Open **http://localhost:8080**.
 
 ## Configuration
 
-All configuration is via environment variables — see [`.env.example`](./.env.example).
-Notable ones:
+Secrets are provided through environment variables; provider endpoints, model
+ids, generation parameters, and minimum account levels are stored in Postgres
+and managed in **Admin → AI models**. See [`.env.example`](./.env.example).
+Notable bootstrap variables:
 
 | Variable | Description |
 | --- | --- |
 | `APP_URL` | Public URL (drives OAuth callback + CORS). |
-| `LLM_MODEL` | Model for generation. Defaults to `minimaxai/minimax-m2.7`. |
-| `LLM_BASE_URL` | OpenAI-compatible endpoint. Defaults to NVIDIA's. |
+| `LLM_API_KEY_ENV` | Environment-variable name used by the initial provider. Defaults to `NVIDIA_API_KEY`. |
+| `LLM_MODEL` | One-time initial model seed. Defaults to `minimaxai/minimax-m2.7`. |
+| `LLM_BASE_URL` | One-time initial provider endpoint seed. Defaults to NVIDIA's. |
 | `MAX_VISUALIZATIONS_PER_ACCOUNT` | Seeds the **Level 1 (Sketcher)** quota. Defaults to `5`. Higher tiers and live retuning are managed in the admin panel. |
 
 ## Local development (without Docker)
@@ -91,6 +98,8 @@ For local dev, set the Google redirect URI to
 
 - `users` — Google account (`google_id`, email, name, avatar, `is_admin`, `level`).
 - `visualizations` — `title`, `preset`, `source_text`, generated `drawio_xml`.
+- `llm_providers` — OpenAI-compatible endpoint and API-key environment-variable name.
+- `llm_models` — provider model id, display name, generation parameters, enabled/default state, and minimum account level.
 - `session` — session store (managed by `connect-pg-simple`).
 
 ## How generation works

@@ -66,6 +66,39 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- OpenAI-compatible LLM providers and models. Secrets never live here:
+-- api_key_env stores only the environment-variable name that contains the key.
+CREATE TABLE IF NOT EXISTS llm_providers (
+  id          BIGSERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  base_url    TEXT NOT NULL,
+  api_key_env TEXT NOT NULL,
+  enabled     BOOLEAN NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS llm_models (
+  id           BIGSERIAL PRIMARY KEY,
+  provider_id  BIGINT NOT NULL REFERENCES llm_providers(id) ON DELETE CASCADE,
+  model_name   TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  min_level    SMALLINT NOT NULL DEFAULT 1,
+  enabled      BOOLEAN NOT NULL DEFAULT true,
+  is_default   BOOLEAN NOT NULL DEFAULT false,
+  max_tokens   INTEGER NOT NULL DEFAULT 8192,
+  temperature  REAL NOT NULL DEFAULT 1,
+  top_p        REAL NOT NULL DEFAULT 0.95,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(provider_id, model_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_models_provider
+  ON llm_models(provider_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_models_single_default
+  ON llm_models ((is_default)) WHERE is_default;
+
 -- Per-generation telemetry for diagrams produced by the LLM. One row is written
 -- each time generation finishes (success or failure). Kept in its own table so
 -- the visualizations table stays lean and the admin report can aggregate freely.

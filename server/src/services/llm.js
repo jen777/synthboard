@@ -1,6 +1,5 @@
 import OpenAI from "openai";
 import { config } from "../config.js";
-import { getSetting } from "./settings.js";
 import { PRESETS } from "./presets.js";
 import {
   applyIconEnhancements,
@@ -17,27 +16,36 @@ function log(msg, extra) {
   }
 }
 
-// OpenAI-compatible client. The base URL is admin-configurable at runtime, so we
-// lazily (re)build the client whenever it changes. The API key stays in env.
-let client = null;
-let clientBaseUrl = null;
-function getClient() {
-  const baseURL = getSetting("llm_base_url") || config.llm.baseUrl;
-  if (!client || clientBaseUrl !== baseURL) {
-    client = new OpenAI({
-      apiKey: config.llm.apiKey,
-      baseURL,
+// OpenAI-compatible clients are cached per provider configuration. API key
+// values come from environment variables resolved by the catalog service.
+const clients = new Map();
+function getClient(modelConfig) {
+  const provider = modelConfig.provider;
+  const cacheKey = [
+    provider.id,
+    provider.baseUrl,
+    provider.apiKeyEnv,
+    config.llm.timeoutMs,
+    config.llm.maxRetries,
+  ].join(":");
+  if (!clients.has(cacheKey)) {
+    clients.set(
+      cacheKey,
+      new OpenAI({
+        apiKey: provider.apiKey,
+        baseURL: provider.baseUrl,
+        timeout: config.llm.timeoutMs,
+        maxRetries: config.llm.maxRetries,
+      }),
+    );
+    log("provider client created", {
+      provider: provider.name,
+      baseURL: provider.baseUrl,
       timeout: config.llm.timeoutMs,
       maxRetries: config.llm.maxRetries,
     });
-    clientBaseUrl = baseURL;
-    log("client (re)created", {
-      baseURL,
-      timeoutMs: config.llm.timeoutMs,
-      maxRetries: config.llm.maxRetries,
-    });
   }
-  return client;
+  return clients.get(cacheKey);
 }
 
 // Instructions on how to emit draw.io XML. Kept stable across requests.
@@ -461,8 +469,17 @@ Return only the draw.io <mxfile> XML.`;
  *   `meta` carries generation telemetry (model, timings, sampling params,
  *   finish reason) so callers can persist it for the admin report.
  */
-export async function generateDrawio({ preset, sourceText, title, maxSourceChars }) {
+export async function generateDrawio({
+  preset,
+  sourceText,
+  title,
+  maxSourceChars,
+  modelConfig,
+}) {
   const presetDef = PRESETS[preset];
+  if (!modelConfig?.provider?.apiKey) {
+    throw new Error("A configured AI model is required for generation.");
+  }
 
   // Truncate to the caller's per-level character cap so we never overspend input
   // tokens on an oversized payload. The UI warns about this, but enforce it here
@@ -502,12 +519,13 @@ export async function generateDrawio({ preset, sourceText, title, maxSourceChars
     sourceText: trimmedSource,
   });
 
-  const model = getSetting("llm_model") || config.llm.model;
-  const maxTokens = getSetting("llm_max_tokens") || config.llm.maxTokens;
-  const temperature = getSetting("llm_temperature") ?? 1;
-  const topP = getSetting("llm_top_p") ?? 0.95;
+  const model = modelConfig.modelName;
+  const maxTokens = modelConfig.maxTokens;
+  const temperature = modelConfig.temperature;
+  const topP = modelConfig.topP;
 
   log("request →", {
+    provider: modelConfig.provider.name,
     model,
     preset,
     maxTokens,
@@ -525,7 +543,7 @@ export async function generateDrawio({ preset, sourceText, title, maxSourceChars
     // Stream the completion. Continuous data flow means a slow-but-progressing
     // generation isn't killed by an idle timeout, and we get visibility into
     // time-to-first-token vs. total generation time.
-    const stream = await getClient().chat.completions.create({
+    const stream = await getClient(modelConfig).chat.completions.create({
       model,
       messages: [
         { role: "system", content: BASE_SYSTEM },
@@ -614,6 +632,9 @@ export async function generateDrawio({ preset, sourceText, title, maxSourceChars
   log("✓ extracted XML", { xmlChars: xml.length, visualSummary });
 
   const meta = {
+    provider: modelConfig.provider.name,
+    providerId: modelConfig.provider.id,
+    modelConfigId: modelConfig.id,
     model,
     temperature,
     topP,

@@ -36,10 +36,14 @@ export const config = {
   },
 
   llm: {
-    apiKey: required("NVIDIA_API_KEY"),
+    // The initial catalog entry points at this env-var name. The key value is
+    // resolved dynamically from process.env and is never stored in Postgres.
+    legacyApiKeyEnv: process.env.LLM_API_KEY_ENV || "NVIDIA_API_KEY",
     baseUrl: process.env.LLM_BASE_URL || "https://integrate.api.nvidia.com/v1",
     model: process.env.LLM_MODEL || "minimaxai/minimax-m2.7",
     maxTokens: parseInt(process.env.LLM_MAX_TOKENS || "8192", 10),
+    temperature: parseFloat(process.env.LLM_TEMPERATURE || "1"),
+    topP: parseFloat(process.env.LLM_TOP_P || "0.95"),
     // Fallback cap on source characters fed to the model; the live value is the
     // signed-in user's per-level `level_N_chars` setting. MAX_SOURCE_CHARS also
     // seeds the Level 1 default. Source text beyond the cap is truncated so input

@@ -10,6 +10,7 @@ import morgan from "morgan";
 import { config } from "./config.js";
 import { pool, initSchema } from "./db.js";
 import { initSettings } from "./services/settings.js";
+import { initLlmCatalog } from "./services/llmCatalog.js";
 import passport from "./auth/passport.js";
 import authRoutes from "./auth/routes.js";
 import userRoutes from "./routes/user.js";
@@ -98,6 +99,7 @@ app.use((err, req, res, next) => {
 async function start() {
   await initSchema();
   await initSettings();
+  await initLlmCatalog();
   app.listen(config.port, () => {
     console.log(`SynthBoard API listening on :${config.port}`);
     console.log(`APP_URL: ${config.appUrl}`);

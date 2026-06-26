@@ -188,6 +188,9 @@ export default function Create() {
 
   const [presets, setPresets] = useState([]);
   const [presetMaxChars, setPresetMaxChars] = useState(DEFAULT_MAX_SOURCE_CHARS);
+  const [models, setModels] = useState([]);
+  const [modelId, setModelId] = useState("");
+  const [modelsLoaded, setModelsLoaded] = useState(false);
   // The signed-in user's level cap is authoritative (it's what the server
   // enforces); fall back to the presets endpoint value until /me has loaded.
   const maxSourceChars = user?.maxSourceChars || presetMaxChars;
@@ -203,6 +206,14 @@ export default function Create() {
       if (d.maxSourceChars) setPresetMaxChars(d.maxSourceChars);
       if (d.presets[0]) setPreset(d.presets[0].key);
     });
+    api
+      .models()
+      .then((d) => {
+        setModels(d.models || []);
+        setModelId(d.defaultModelId || d.models?.[0]?.id || "");
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setModelsLoaded(true));
   }, []);
 
   async function handleSubmit(e) {
@@ -213,7 +224,7 @@ export default function Create() {
       // Generation now runs in the background: create() returns as soon as the
       // pending row exists, then we poll for the final status. This keeps every
       // request short so a slow model can't trip the proxy/Cloudflare 524.
-      const data = await api.create({ sourceText, preset, title });
+      const data = await api.create({ sourceText, preset, title, modelId });
       if (data.quota) setQuota(data.quota);
       const viz = await pollUntilDone(data.visualization.id);
       await refresh();
@@ -228,6 +239,7 @@ export default function Create() {
 
   const atLimit = quota && quota.remaining <= 0;
   const overCharLimit = sourceText.length > maxSourceChars;
+  const selectedModel = models.find((model) => model.id === modelId);
 
   return (
     <div className="container">
@@ -266,6 +278,36 @@ export default function Create() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div>
+          <label className="muted">AI model</label>
+          <select
+            value={modelId}
+            onChange={(e) => setModelId(e.target.value)}
+            style={{ marginTop: 8 }}
+            disabled={submitting || !modelsLoaded || models.length === 0}
+            required
+          >
+            {models.length === 0 ? (
+              <option value="">
+                {modelsLoaded ? "No model available for this level" : "Loading models…"}
+              </option>
+            ) : (
+              models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.providerName} · {model.displayName}
+                  {model.isDefault ? " — default" : ""}
+                </option>
+              ))
+            )}
+          </select>
+          {selectedModel && (
+            <small className="muted" style={{ display: "block", marginTop: 4 }}>
+              {selectedModel.modelName} · available from Level{" "}
+              {selectedModel.minLevel}
+            </small>
+          )}
         </div>
 
         <div>
@@ -314,7 +356,9 @@ export default function Create() {
           <button
             type="submit"
             className="primary"
-            disabled={submitting || atLimit || !sourceText.trim()}
+            disabled={
+              submitting || atLimit || !sourceText.trim() || !modelId
+            }
           >
             {submitting ? (
               <span className="row">

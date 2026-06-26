@@ -6,6 +6,7 @@ import { useAuth } from "../App.jsx";
 const TABS = [
   { key: "stats", label: "Statistics" },
   { key: "generations", label: "Generation report" },
+  { key: "models", label: "AI models" },
   { key: "libraries", label: "Icon libraries" },
   { key: "users", label: "Users" },
   { key: "settings", label: "Settings" },
@@ -39,6 +40,7 @@ export default function Admin() {
 
       {tab === "stats" && <Stats />}
       {tab === "generations" && <Generations />}
+      {tab === "models" && <LlmCatalog />}
       {tab === "libraries" && <IconLibraries />}
       {tab === "users" && <Users />}
       {tab === "settings" && <Settings />}
@@ -313,6 +315,7 @@ function Generations() {
           <table className="table">
             <thead>
               <tr>
+                <th>Provider</th>
                 <th>Model</th>
                 <th style={{ textAlign: "right" }}>Generations</th>
                 <th style={{ textAlign: "right" }}>Total tokens</th>
@@ -321,7 +324,8 @@ function Generations() {
             </thead>
             <tbody>
               {byModel.map((m) => (
-                <tr key={m.model}>
+                <tr key={`${m.provider}:${m.model}`}>
+                  <td>{m.provider}</td>
                   <td>{m.model}</td>
                   <td style={{ textAlign: "right" }}>{fmtNum(m.count)}</td>
                   <td style={{ textAlign: "right" }}>{fmtNum(m.total_tokens)}</td>
@@ -405,6 +409,7 @@ function Generations() {
                   <th>Diagram</th>
                   <th>User</th>
                   <th>Preset</th>
+                  <th>Provider</th>
                   <th>Model</th>
                   <th>Status</th>
                   <th style={{ textAlign: "right" }}>In</th>
@@ -434,6 +439,7 @@ function Generations() {
                       </small>
                     </td>
                     <td>{g.preset || "—"}</td>
+                    <td>{g.provider || "—"}</td>
                     <td>
                       <small className="muted">{g.model || "—"}</small>
                     </td>
@@ -522,6 +528,521 @@ function Generations() {
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── AI providers and models ───────────────────────────────────
+const EMPTY_PROVIDER = {
+  id: null,
+  name: "",
+  baseUrl: "",
+  apiKeyEnv: "",
+  enabled: true,
+};
+
+const EMPTY_MODEL = {
+  id: null,
+  providerId: "",
+  modelName: "",
+  displayName: "",
+  minLevel: 1,
+  enabled: true,
+  isDefault: false,
+  maxTokens: 8192,
+  temperature: 1,
+  topP: 0.95,
+};
+
+function LlmCatalog() {
+  const [providers, setProviders] = useState(null);
+  const [levels, setLevels] = useState([]);
+  const [providerForm, setProviderForm] = useState(EMPTY_PROVIDER);
+  const [modelForm, setModelForm] = useState(EMPTY_MODEL);
+  const [error, setError] = useState(null);
+  const [status, setStatus] = useState("idle");
+
+  function load() {
+    return api.admin
+      .llmCatalog()
+      .then((data) => {
+        setProviders(data.providers || []);
+        setLevels(data.levels || []);
+        setModelForm((form) => {
+          const providerStillExists = data.providers?.some(
+            (provider) => provider.id === form.providerId,
+          );
+          return {
+            ...form,
+            providerId: providerStillExists
+              ? form.providerId
+              : data.providers?.[0]?.id || "",
+          };
+        });
+      })
+      .catch((err) => setError(err.message));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  function setProviderField(key, value) {
+    setProviderForm((form) => ({ ...form, [key]: value }));
+  }
+
+  function setModelField(key, value) {
+    setModelForm((form) => ({ ...form, [key]: value }));
+  }
+
+  async function saveProvider(e) {
+    e.preventDefault();
+    setError(null);
+    setStatus("saving-provider");
+    try {
+      const payload = {
+        name: providerForm.name,
+        baseUrl: providerForm.baseUrl,
+        apiKeyEnv: providerForm.apiKeyEnv,
+        enabled: providerForm.enabled,
+      };
+      if (providerForm.id) {
+        await api.admin.updateLlmProvider(providerForm.id, payload);
+      } else {
+        await api.admin.createLlmProvider(payload);
+      }
+      setProviderForm(EMPTY_PROVIDER);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setStatus("idle");
+    }
+  }
+
+  async function saveModel(e) {
+    e.preventDefault();
+    setError(null);
+    setStatus("saving-model");
+    try {
+      const payload = {
+        ...modelForm,
+        minLevel: Number(modelForm.minLevel),
+        maxTokens: Number(modelForm.maxTokens),
+        temperature: Number(modelForm.temperature),
+        topP: Number(modelForm.topP),
+      };
+      delete payload.id;
+      if (modelForm.id) {
+        await api.admin.updateLlmModel(modelForm.id, payload);
+      } else {
+        await api.admin.createLlmModel(payload);
+      }
+      setModelForm({
+        ...EMPTY_MODEL,
+        providerId: providers?.[0]?.id || "",
+      });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setStatus("idle");
+    }
+  }
+
+  async function removeProvider(provider) {
+    if (
+      !window.confirm(
+        `Delete ${provider.name} and its ${provider.models.length} model configuration(s)?`,
+      )
+    )
+      return;
+    setError(null);
+    try {
+      await api.admin.deleteLlmProvider(provider.id);
+      if (providerForm.id === provider.id) setProviderForm(EMPTY_PROVIDER);
+      if (modelForm.providerId === provider.id) {
+        setModelForm(EMPTY_MODEL);
+      }
+      await load();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function removeModel(model) {
+    if (!window.confirm(`Delete ${model.displayName}?`)) return;
+    setError(null);
+    try {
+      await api.admin.deleteLlmModel(model.id);
+      if (modelForm.id === model.id) {
+        setModelForm({
+          ...EMPTY_MODEL,
+          providerId: providers?.[0]?.id || "",
+        });
+      }
+      await load();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function editModel(model) {
+    setModelForm({
+      id: model.id,
+      providerId: model.providerId,
+      modelName: model.modelName,
+      displayName: model.displayName,
+      minLevel: model.minLevel,
+      enabled: model.enabled,
+      isDefault: model.isDefault,
+      maxTokens: model.maxTokens,
+      temperature: model.temperature,
+      topP: model.topP,
+    });
+  }
+
+  if (error && !providers) return <div className="banner error">{error}</div>;
+  if (!providers) return <span className="spinner" />;
+
+  return (
+    <div className="stack">
+      {error && <div className="banner error">{error}</div>}
+      <div className="banner info">
+        Provider endpoints and model settings are stored in Postgres. API key
+        values stay in application environment variables; this page stores only
+        each variable&apos;s name.
+      </div>
+
+      <form className="card stack" onSubmit={saveProvider}>
+        <div className="row spread">
+          <b>{providerForm.id ? "Edit provider" : "Add provider"}</b>
+          {providerForm.id && (
+            <button type="button" onClick={() => setProviderForm(EMPTY_PROVIDER)}>
+              Cancel edit
+            </button>
+          )}
+        </div>
+        <div className="grid">
+          <div>
+            <label className="muted">Provider name</label>
+            <input
+              value={providerForm.name}
+              onChange={(e) => setProviderField("name", e.target.value)}
+              placeholder="OpenAI"
+              style={{ marginTop: 6 }}
+              required
+            />
+          </div>
+          <div>
+            <label className="muted">OpenAI-compatible base URL</label>
+            <input
+              value={providerForm.baseUrl}
+              onChange={(e) => setProviderField("baseUrl", e.target.value)}
+              placeholder="https://api.openai.com/v1"
+              style={{ marginTop: 6 }}
+              required
+            />
+          </div>
+          <div>
+            <label className="muted">API key environment variable</label>
+            <input
+              value={providerForm.apiKeyEnv}
+              onChange={(e) =>
+                setProviderField("apiKeyEnv", e.target.value.toUpperCase())
+              }
+              placeholder="OPENAI_API_KEY"
+              style={{ marginTop: 6 }}
+              required
+            />
+          </div>
+        </div>
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={providerForm.enabled}
+            onChange={(e) => setProviderField("enabled", e.target.checked)}
+            style={{ width: "auto" }}
+          />
+          Provider enabled
+        </label>
+        <button
+          type="submit"
+          className="primary"
+          disabled={status === "saving-provider"}
+        >
+          {status === "saving-provider"
+            ? "Saving…"
+            : providerForm.id
+              ? "Update provider"
+              : "Add provider"}
+        </button>
+      </form>
+
+      <form className="card stack" onSubmit={saveModel}>
+        <div className="row spread">
+          <b>{modelForm.id ? "Edit model" : "Add model"}</b>
+          {modelForm.id && (
+            <button
+              type="button"
+              onClick={() =>
+                setModelForm({
+                  ...EMPTY_MODEL,
+                  providerId: providers[0]?.id || "",
+                })
+              }
+            >
+              Cancel edit
+            </button>
+          )}
+        </div>
+        <div className="grid">
+          <div>
+            <label className="muted">Provider</label>
+            <select
+              value={modelForm.providerId}
+              onChange={(e) => setModelField("providerId", e.target.value)}
+              style={{ marginTop: 6 }}
+              required
+            >
+              <option value="">Choose a provider</option>
+              {providers.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="muted">Model id / name</label>
+            <input
+              value={modelForm.modelName}
+              onChange={(e) => setModelField("modelName", e.target.value)}
+              placeholder="gpt-4.1-mini"
+              style={{ marginTop: 6 }}
+              required
+            />
+          </div>
+          <div>
+            <label className="muted">Display name</label>
+            <input
+              value={modelForm.displayName}
+              onChange={(e) => setModelField("displayName", e.target.value)}
+              placeholder="GPT-4.1 mini"
+              style={{ marginTop: 6 }}
+            />
+          </div>
+          <div>
+            <label className="muted">Minimum account level</label>
+            <select
+              value={modelForm.minLevel}
+              onChange={(e) => setModelField("minLevel", e.target.value)}
+              style={{ marginTop: 6 }}
+            >
+              {levels.map((level) => (
+                <option key={level.level} value={level.level}>
+                  Level {level.level} · {level.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="muted">Max output tokens</label>
+            <input
+              type="number"
+              min="256"
+              max="32768"
+              value={modelForm.maxTokens}
+              onChange={(e) => setModelField("maxTokens", e.target.value)}
+              style={{ marginTop: 6 }}
+            />
+          </div>
+          <div>
+            <label className="muted">Temperature</label>
+            <input
+              type="number"
+              min="0"
+              max="2"
+              step="0.01"
+              value={modelForm.temperature}
+              onChange={(e) => setModelField("temperature", e.target.value)}
+              style={{ marginTop: 6 }}
+            />
+          </div>
+          <div>
+            <label className="muted">Top P</label>
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.01"
+              value={modelForm.topP}
+              onChange={(e) => setModelField("topP", e.target.value)}
+              style={{ marginTop: 6 }}
+            />
+          </div>
+        </div>
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <label className="row">
+            <input
+              type="checkbox"
+              checked={modelForm.enabled}
+              onChange={(e) => setModelField("enabled", e.target.checked)}
+              disabled={Boolean(modelForm.id && modelForm.isDefault)}
+              style={{ width: "auto" }}
+            />
+            Model enabled
+          </label>
+          <label className="row">
+            <input
+              type="checkbox"
+              checked={modelForm.isDefault}
+              onChange={(e) => setModelField("isDefault", e.target.checked)}
+              disabled={Boolean(modelForm.id && modelForm.isDefault)}
+              style={{ width: "auto" }}
+            />
+            Default model
+          </label>
+        </div>
+        {modelForm.id && modelForm.isDefault && (
+          <small className="muted">
+            To replace the default, edit another enabled model and mark it as
+            default first.
+          </small>
+        )}
+        <button
+          type="submit"
+          className="primary"
+          disabled={status === "saving-model" || providers.length === 0}
+        >
+          {status === "saving-model"
+            ? "Saving…"
+            : modelForm.id
+              ? "Update model"
+              : "Add model"}
+        </button>
+      </form>
+
+      <div className="card stack">
+        <b>Configured providers and level access</b>
+        {providers.length === 0 ? (
+          <span className="muted">Add a provider, then add its models.</span>
+        ) : (
+          providers.map((provider) => (
+            <div className="llm-provider" key={provider.id}>
+              <div className="row spread" style={{ alignItems: "flex-start" }}>
+                <div>
+                  <div className="row" style={{ flexWrap: "wrap" }}>
+                    <b>{provider.name}</b>
+                    <span className="pill">
+                      {provider.enabled ? "enabled" : "disabled"}
+                    </span>
+                    <span
+                      className="pill"
+                      style={
+                        provider.hasApiKey
+                          ? { color: "var(--accent-2)" }
+                          : { color: "var(--danger)" }
+                      }
+                    >
+                      {provider.hasApiKey ? "key configured" : "key missing"}
+                    </span>
+                  </div>
+                  <small className="muted">{provider.baseUrl}</small>
+                  <small className="muted" style={{ display: "block" }}>
+                    Key env: {provider.apiKeyEnv}
+                  </small>
+                </div>
+                <div className="row">
+                  <button
+                    type="button"
+                    onClick={() => setProviderForm({ ...provider })}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => removeProvider(provider)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              {provider.models.length === 0 ? (
+                <small className="muted">No models configured.</small>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Model</th>
+                        <th>Access</th>
+                        <th>Parameters</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: "right" }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {provider.models.map((model) => (
+                        <tr key={model.id}>
+                          <td>
+                            <div>{model.displayName}</div>
+                            <small className="muted">{model.modelName}</small>
+                          </td>
+                          <td>
+                            Level {model.minLevel}+
+                            {levels.find((l) => l.level === model.minLevel)?.name
+                              ? ` · ${
+                                  levels.find((l) => l.level === model.minLevel)
+                                    .name
+                                }`
+                              : ""}
+                          </td>
+                          <td>
+                            <small className="muted">
+                              {model.maxTokens.toLocaleString()} tokens · T{" "}
+                              {model.temperature} · P {model.topP}
+                            </small>
+                          </td>
+                          <td>
+                            <div className="row" style={{ flexWrap: "wrap" }}>
+                              <span className="pill">
+                                {model.enabled ? "enabled" : "disabled"}
+                              </span>
+                              {model.isDefault && (
+                                <span className="pill">default</span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            <div
+                              className="row"
+                              style={{ justifyContent: "flex-end" }}
+                            >
+                              <button type="button" onClick={() => editModel(model)}>
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="danger"
+                                onClick={() => removeModel(model)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))
         )}
       </div>
     </div>
@@ -949,7 +1470,6 @@ function Users() {
 
 // ── Settings ──────────────────────────────────────────────────
 const GROUP_LABELS = {
-  model: "Model & generation",
   limits: "Limits",
   levels: "Account levels",
 };

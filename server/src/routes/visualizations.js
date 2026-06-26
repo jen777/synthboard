@@ -3,6 +3,10 @@ import { requireAuth } from "../middleware/auth.js";
 import { query, pool } from "../db.js";
 import { resolveLevel } from "../services/settings.js";
 import { generateDrawio } from "../services/llm.js";
+import {
+  listAvailableModels,
+  resolveModelForLevel,
+} from "../services/llmCatalog.js";
 import { isValidPreset, listPresets } from "../services/presets.js";
 
 const router = Router();
@@ -16,6 +20,16 @@ router.get("/presets", (req, res) => {
 });
 
 router.use(requireAuth);
+
+// Models available to the signed-in user's account level. Provider endpoints
+// and API-key environment-variable names are intentionally not exposed.
+router.get("/models", async (req, res, next) => {
+  try {
+    res.json(await listAvailableModels(req.user.level));
+  } catch (err) {
+    next(err);
+  }
+});
 
 // List the current user's visualizations (newest first, no XML payload).
 router.get("/", async (req, res, next) => {
@@ -81,7 +95,11 @@ router.put("/:id", async (req, res, next) => {
 // Generate the diagram in the background and update the row in place. Runs
 // detached from the HTTP request that created the row, so a slow model can't
 // hold a connection open long enough to trip the proxy/Cloudflare 524 timeout.
-async function runGeneration(vizId, userId, { preset, sourceText, title, maxSourceChars }) {
+async function runGeneration(
+  vizId,
+  userId,
+  { preset, sourceText, title, maxSourceChars, modelConfig },
+) {
   const startedAt = Date.now();
   try {
     await query("UPDATE visualizations SET status = 'processing' WHERE id = $1", [
@@ -93,6 +111,7 @@ async function runGeneration(vizId, userId, { preset, sourceText, title, maxSour
       sourceText,
       title,
       maxSourceChars,
+      modelConfig,
     });
 
     await query(
@@ -135,6 +154,16 @@ async function runGeneration(vizId, userId, { preset, sourceText, title, maxSour
       userId,
       preset,
       status: "failed",
+      meta: {
+        provider: modelConfig.provider.name,
+        providerId: modelConfig.provider.id,
+        modelConfigId: modelConfig.id,
+        model: modelConfig.modelName,
+        maxTokens: modelConfig.maxTokens,
+        temperature: modelConfig.temperature,
+        topP: modelConfig.topP,
+        elapsedMs: Date.now() - startedAt,
+      },
       error: err?.message || "Generation failed",
     });
   }
@@ -183,7 +212,7 @@ async function recordGeneration({ vizId, userId, preset, status, usage, meta, er
 // row is created in 'pending' state and returned right away (202); generation
 // proceeds in the background and the client polls GET /:id for the result.
 router.post("/", async (req, res, next) => {
-  const { sourceText, preset, title } = req.body || {};
+  const { sourceText, preset, title, modelId } = req.body || {};
 
   if (!sourceText || typeof sourceText !== "string" || !sourceText.trim()) {
     return res.status(400).json({ error: "sourceText is required" });
@@ -199,9 +228,17 @@ router.post("/", async (req, res, next) => {
   }
 
   const { limit, maxChars } = resolveLevel(req.user.level);
+  let modelConfig;
+  try {
+    modelConfig = await resolveModelForLevel(modelId, req.user.level);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
   console.log("[viz] generate request", {
     userId: req.user.id,
     preset,
+    provider: modelConfig.provider.name,
+    model: modelConfig.modelName,
     sourceChars: sourceText.length,
   });
 
@@ -262,10 +299,17 @@ router.post("/", async (req, res, next) => {
     sourceText,
     title: finalTitle,
     maxSourceChars: maxChars,
+    modelConfig,
   });
 
   res.status(202).json({
     visualization: viz,
+    model: {
+      id: modelConfig.id,
+      providerName: modelConfig.provider.name,
+      displayName: modelConfig.displayName,
+      modelName: modelConfig.modelName,
+    },
     quota: { used, limit, remaining: Math.max(0, limit - used) },
   });
 });

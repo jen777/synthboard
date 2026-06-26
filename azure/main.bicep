@@ -52,6 +52,7 @@ param googleClientSecret string
 @secure()
 param nvidiaApiKey string
 
+param llmApiKeyEnv string = 'NVIDIA_API_KEY'
 param llmBaseUrl string = 'https://integrate.api.nvidia.com/v1'
 param llmModel string = 'minimaxai/minimax-m2.7'
 param maxVisualizationsPerAccount string = '5'
@@ -178,6 +179,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'GOOGLE_CLIENT_ID', secretRef: 'google-client-id' }
             { name: 'GOOGLE_CLIENT_SECRET', secretRef: 'google-client-secret' }
             { name: 'NVIDIA_API_KEY', secretRef: 'nvidia-api-key' }
+            { name: 'LLM_API_KEY_ENV', value: llmApiKeyEnv }
             { name: 'LLM_BASE_URL', value: llmBaseUrl }
             { name: 'LLM_MODEL', value: llmModel }
             { name: 'MAX_VISUALIZATIONS_PER_ACCOUNT', value: maxVisualizationsPerAccount }

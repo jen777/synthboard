@@ -17,6 +17,8 @@ services:
   server:
     build: ./server
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -26,6 +28,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       NVIDIA_API_KEY: ${NVIDIA_API_KEY}
+      LLM_API_KEY_ENV: ${LLM_API_KEY_ENV:-NVIDIA_API_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://integrate.api.nvidia.com/v1}
       LLM_MODEL: ${LLM_MODEL:-minimaxai/minimax-m2.7}
       LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-8192}

@@ -36,6 +36,12 @@ function booleanValue(value, fallback) {
 }
 
 function numberValue(value, label, { min, max, integer = false }) {
+  if (value === null || value === undefined) {
+    throw new LlmCatalogError(`${label} must be a number`);
+  }
+  if (typeof value === "string" && value.trim() === "") {
+    throw new LlmCatalogError(`${label} must be a number`);
+  }
   const number = Number(value);
   if (!Number.isFinite(number)) {
     throw new LlmCatalogError(`${label} must be a number`);
@@ -58,6 +64,9 @@ function safeNumber(value, fallback, options) {
 }
 
 export function validateProviderFields(input, existing = {}) {
+  input ||= {};
+  existing ||= {};
+
   const name = requiredText(input.name ?? existing.name, "Provider name");
   const baseUrl = requiredText(input.baseUrl ?? existing.base_url, "Base URL");
   let parsed;
@@ -89,6 +98,9 @@ export function validateProviderFields(input, existing = {}) {
 }
 
 export function validateModelFields(input, existing = {}) {
+  input ||= {};
+  existing ||= {};
+
   const providerId = requiredText(
     input.providerId ?? existing.provider_id,
     "Provider",

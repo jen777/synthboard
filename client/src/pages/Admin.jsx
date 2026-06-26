@@ -556,6 +556,18 @@ const EMPTY_MODEL = {
   topP: 0.95,
 };
 
+function catalogText(value) {
+  return String(value ?? "").trim();
+}
+
+function catalogNumber(value, label) {
+  const text = catalogText(value);
+  if (!text) throw new Error(`${label} is required`);
+  const number = Number(text);
+  if (!Number.isFinite(number)) throw new Error(`${label} must be a number`);
+  return number;
+}
+
 function LlmCatalog() {
   const [providers, setProviders] = useState(null);
   const [levels, setLevels] = useState([]);
@@ -603,9 +615,9 @@ function LlmCatalog() {
     setStatus("saving-provider");
     try {
       const payload = {
-        name: providerForm.name,
-        baseUrl: providerForm.baseUrl,
-        apiKeyEnv: providerForm.apiKeyEnv,
+        name: catalogText(providerForm.name),
+        baseUrl: catalogText(providerForm.baseUrl),
+        apiKeyEnv: catalogText(providerForm.apiKeyEnv).toUpperCase(),
         enabled: providerForm.enabled,
       };
       if (providerForm.id) {
@@ -628,13 +640,16 @@ function LlmCatalog() {
     setStatus("saving-model");
     try {
       const payload = {
-        ...modelForm,
-        minLevel: Number(modelForm.minLevel),
-        maxTokens: Number(modelForm.maxTokens),
-        temperature: Number(modelForm.temperature),
-        topP: Number(modelForm.topP),
+        providerId: catalogText(modelForm.providerId),
+        modelName: catalogText(modelForm.modelName),
+        displayName: catalogText(modelForm.displayName),
+        minLevel: catalogNumber(modelForm.minLevel, "Minimum account level"),
+        enabled: modelForm.enabled,
+        isDefault: modelForm.isDefault,
+        maxTokens: catalogNumber(modelForm.maxTokens, "Max output tokens"),
+        temperature: catalogNumber(modelForm.temperature, "Temperature"),
+        topP: catalogNumber(modelForm.topP, "Top P"),
       };
-      delete payload.id;
       if (modelForm.id) {
         await api.admin.updateLlmModel(modelForm.id, payload);
       } else {
@@ -840,6 +855,7 @@ function LlmCatalog() {
               value={modelForm.minLevel}
               onChange={(e) => setModelField("minLevel", e.target.value)}
               style={{ marginTop: 6 }}
+              required
             >
               {levels.map((level) => (
                 <option key={level.level} value={level.level}>
@@ -857,6 +873,7 @@ function LlmCatalog() {
               value={modelForm.maxTokens}
               onChange={(e) => setModelField("maxTokens", e.target.value)}
               style={{ marginTop: 6 }}
+              required
             />
           </div>
           <div>
@@ -869,6 +886,7 @@ function LlmCatalog() {
               value={modelForm.temperature}
               onChange={(e) => setModelField("temperature", e.target.value)}
               style={{ marginTop: 6 }}
+              required
             />
           </div>
           <div>
@@ -881,6 +899,7 @@ function LlmCatalog() {
               value={modelForm.topP}
               onChange={(e) => setModelField("topP", e.target.value)}
               style={{ marginTop: 6 }}
+              required
             />
           </div>
         </div>

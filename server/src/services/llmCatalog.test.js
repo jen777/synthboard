@@ -63,6 +63,38 @@ test("model configuration validates level access and generation parameters", () 
   assert.equal(isModelAllowedForLevel({ min_level: 3 }, 4), true);
 });
 
+test("model configuration supports create flow with no existing row", () => {
+  const model = validateModelFields(
+    {
+      providerId: "7",
+      modelName: "gpt-example",
+      minLevel: 1,
+      maxTokens: 4096,
+      temperature: 0.4,
+      topP: 0.9,
+    },
+    null,
+  );
+
+  assert.equal(model.enabled, true);
+  assert.equal(model.isDefault, false);
+});
+
+test("model configuration rejects blank numeric fields", () => {
+  assert.throws(
+    () =>
+      validateModelFields({
+        providerId: "7",
+        modelName: "gpt-example",
+        minLevel: 1,
+        maxTokens: 4096,
+        temperature: "",
+        topP: 0.9,
+      }),
+    /Temperature must be a number/,
+  );
+});
+
 test("model configuration rejects fractional account levels", () => {
   assert.throws(
     () =>

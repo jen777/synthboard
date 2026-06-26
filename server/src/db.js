@@ -87,12 +87,14 @@ CREATE TABLE IF NOT EXISTS llm_models (
   enabled      BOOLEAN NOT NULL DEFAULT true,
   is_default   BOOLEAN NOT NULL DEFAULT false,
   max_tokens   INTEGER NOT NULL DEFAULT 8192,
-  temperature  REAL NOT NULL DEFAULT 1,
-  top_p        REAL NOT NULL DEFAULT 0.95,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(provider_id, model_name)
 );
+
+-- Backfill for databases created while sampling parameters were model settings.
+ALTER TABLE llm_models DROP COLUMN IF EXISTS temperature;
+ALTER TABLE llm_models DROP COLUMN IF EXISTS top_p;
 
 CREATE INDEX IF NOT EXISTS idx_llm_models_provider
   ON llm_models(provider_id);
@@ -119,15 +121,17 @@ CREATE TABLE IF NOT EXISTS diagram_generations (
   prompt_tokens     INTEGER,
   completion_tokens INTEGER,
   total_tokens      INTEGER,
-  -- Sampling parameters and stop reason used for the call.
-  temperature       REAL,
-  top_p             REAL,
+  -- Provider stop reason for the call.
   finish_reason     TEXT,
   -- Any extra provider metadata we want to keep without a column each.
   meta              JSONB,
   error             TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Backfill for databases created while sampling parameters were telemetry fields.
+ALTER TABLE diagram_generations DROP COLUMN IF EXISTS temperature;
+ALTER TABLE diagram_generations DROP COLUMN IF EXISTS top_p;
 
 CREATE INDEX IF NOT EXISTS idx_diagram_generations_created
   ON diagram_generations(created_at DESC);

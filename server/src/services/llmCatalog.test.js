@@ -44,7 +44,7 @@ test("provider configuration rejects secret-looking values in the env field", ()
   );
 });
 
-test("model configuration validates level access and generation parameters", () => {
+test("model configuration validates level access and token limit", () => {
   const model = validateModelFields({
     providerId: "7",
     modelName: "gpt-example",
@@ -53,8 +53,6 @@ test("model configuration validates level access and generation parameters", () 
     enabled: true,
     isDefault: false,
     maxTokens: 4096,
-    temperature: 0.4,
-    topP: 0.9,
   });
 
   assert.equal(model.minLevel, 3);
@@ -70,8 +68,6 @@ test("model configuration supports create flow with no existing row", () => {
       modelName: "gpt-example",
       minLevel: 1,
       maxTokens: 4096,
-      temperature: 0.4,
-      topP: 0.9,
     },
     null,
   );
@@ -87,11 +83,9 @@ test("model configuration rejects blank numeric fields", () => {
         providerId: "7",
         modelName: "gpt-example",
         minLevel: 1,
-        maxTokens: 4096,
-        temperature: "",
-        topP: 0.9,
+        maxTokens: "",
       }),
-    /Temperature must be a number/,
+    /Max tokens must be a number/,
   );
 });
 
@@ -103,8 +97,6 @@ test("model configuration rejects fractional account levels", () => {
         modelName: "gpt-example",
         minLevel: 2.5,
         maxTokens: 4096,
-        temperature: 0.4,
-        topP: 0.9,
       }),
     /Minimum level must be an integer/,
   );
@@ -120,8 +112,6 @@ test("a disabled model cannot remain the catalog default", () => {
         enabled: false,
         isDefault: true,
         maxTokens: 4096,
-        temperature: 0.4,
-        topP: 0.9,
       }),
     /default model must be enabled/i,
   );

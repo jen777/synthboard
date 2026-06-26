@@ -160,8 +160,6 @@ async function runGeneration(
         modelConfigId: modelConfig.id,
         model: modelConfig.modelName,
         maxTokens: modelConfig.maxTokens,
-        temperature: modelConfig.temperature,
-        topP: modelConfig.topP,
         elapsedMs: Date.now() - startedAt,
       },
       error: err?.message || "Generation failed",
@@ -179,8 +177,8 @@ async function recordGeneration({ vizId, userId, preset, status, usage, meta, er
          (visualization_id, user_id, preset, model, status,
           generation_ms, first_token_ms, diagram_bytes,
           prompt_tokens, completion_tokens, total_tokens,
-          temperature, top_p, finish_reason, meta, error)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+          finish_reason, meta, error)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [
         vizId,
         userId,
@@ -193,8 +191,6 @@ async function recordGeneration({ vizId, userId, preset, status, usage, meta, er
         usage?.prompt_tokens ?? null,
         usage?.completion_tokens ?? null,
         usage?.total_tokens ?? null,
-        m.temperature ?? null,
-        m.topP ?? null,
         m.finishReason ?? null,
         meta ? JSON.stringify(meta) : null,
         error ?? null,

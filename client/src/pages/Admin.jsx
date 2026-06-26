@@ -552,8 +552,6 @@ const EMPTY_MODEL = {
   enabled: true,
   isDefault: false,
   maxTokens: 8192,
-  temperature: 1,
-  topP: 0.95,
 };
 
 function catalogText(value) {
@@ -647,8 +645,6 @@ function LlmCatalog() {
         enabled: modelForm.enabled,
         isDefault: modelForm.isDefault,
         maxTokens: catalogNumber(modelForm.maxTokens, "Max output tokens"),
-        temperature: catalogNumber(modelForm.temperature, "Temperature"),
-        topP: catalogNumber(modelForm.topP, "Top P"),
       };
       if (modelForm.id) {
         await api.admin.updateLlmModel(modelForm.id, payload);
@@ -714,8 +710,6 @@ function LlmCatalog() {
       enabled: model.enabled,
       isDefault: model.isDefault,
       maxTokens: model.maxTokens,
-      temperature: model.temperature,
-      topP: model.topP,
     });
   }
 
@@ -876,32 +870,6 @@ function LlmCatalog() {
               required
             />
           </div>
-          <div>
-            <label className="muted">Temperature</label>
-            <input
-              type="number"
-              min="0"
-              max="2"
-              step="0.01"
-              value={modelForm.temperature}
-              onChange={(e) => setModelField("temperature", e.target.value)}
-              style={{ marginTop: 6 }}
-              required
-            />
-          </div>
-          <div>
-            <label className="muted">Top P</label>
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.01"
-              value={modelForm.topP}
-              onChange={(e) => setModelField("topP", e.target.value)}
-              style={{ marginTop: 6 }}
-              required
-            />
-          </div>
         </div>
         <div className="row" style={{ flexWrap: "wrap" }}>
           <label className="row">
@@ -1023,8 +991,7 @@ function LlmCatalog() {
                           </td>
                           <td>
                             <small className="muted">
-                              {model.maxTokens.toLocaleString()} tokens · T{" "}
-                              {model.temperature} · P {model.topP}
+                              {model.maxTokens.toLocaleString()} max output tokens
                             </small>
                           </td>
                           <td>

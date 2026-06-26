@@ -521,8 +521,6 @@ export async function generateDrawio({
 
   const model = modelConfig.modelName;
   const maxTokens = modelConfig.maxTokens;
-  const temperature = modelConfig.temperature;
-  const topP = modelConfig.topP;
 
   log("request →", {
     provider: modelConfig.provider.name,
@@ -549,8 +547,6 @@ export async function generateDrawio({
         { role: "system", content: BASE_SYSTEM },
         { role: "user", content: userPrompt },
       ],
-      temperature,
-      top_p: topP,
       max_tokens: maxTokens,
       stream: true,
       stream_options: { include_usage: true },
@@ -636,8 +632,6 @@ export async function generateDrawio({
     providerId: modelConfig.provider.id,
     modelConfigId: modelConfig.id,
     model,
-    temperature,
-    topP,
     maxTokens,
     elapsedMs,
     firstTokenMs,

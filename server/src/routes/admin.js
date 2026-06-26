@@ -204,7 +204,7 @@ router.get("/generations", async (req, res, next) => {
                 COALESCE(g.meta->>'provider', '—') AS provider,
                 g.generation_ms, g.first_token_ms, g.diagram_bytes,
                 g.prompt_tokens, g.completion_tokens, g.total_tokens,
-                g.temperature, g.top_p, g.finish_reason, g.error, g.created_at,
+                g.finish_reason, g.error, g.created_at,
                 jsonb_array_length(COALESCE(g.meta->'iconCandidates', '[]'::jsonb))::int
                   AS icon_candidate_count,
                 jsonb_array_length(COALESCE(g.meta->'iconsApplied', '[]'::jsonb))::int

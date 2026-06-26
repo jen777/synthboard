@@ -145,18 +145,6 @@ export function validateModelFields(input, existing = {}) {
       "Max tokens",
       { min: 256, max: 32768, integer: true },
     ),
-    temperature: numberValue(
-      input.temperature ??
-        existing.temperature ??
-        config.llm.temperature,
-      "Temperature",
-      { min: 0, max: 2 },
-    ),
-    topP: numberValue(
-      input.topP ?? existing.top_p ?? config.llm.topP,
-      "Top P",
-      { min: 0, max: 1 },
-    ),
   };
 }
 
@@ -178,8 +166,6 @@ function publicModel(row) {
     minLevel: Number(row.min_level),
     isDefault: Boolean(row.is_default),
     maxTokens: Number(row.max_tokens),
-    temperature: Number(row.temperature),
-    topP: Number(row.top_p),
   };
 }
 
@@ -369,9 +355,9 @@ async function writeModel(input, existing) {
         `UPDATE llm_models
             SET provider_id = $1, model_name = $2, display_name = $3,
                 min_level = $4, enabled = $5, is_default = $6,
-                max_tokens = $7, temperature = $8, top_p = $9,
+                max_tokens = $7,
                 updated_at = now()
-          WHERE id = $10
+          WHERE id = $8
           RETURNING *`,
         [
           value.providerId,
@@ -381,8 +367,6 @@ async function writeModel(input, existing) {
           value.enabled,
           value.isDefault,
           value.maxTokens,
-          value.temperature,
-          value.topP,
           existing.id,
         ],
       );
@@ -390,8 +374,8 @@ async function writeModel(input, existing) {
       result = await client.query(
         `INSERT INTO llm_models
            (provider_id, model_name, display_name, min_level, enabled,
-            is_default, max_tokens, temperature, top_p)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            is_default, max_tokens)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
          RETURNING *`,
         [
           value.providerId,
@@ -401,8 +385,6 @@ async function writeModel(input, existing) {
           value.enabled,
           value.isDefault,
           value.maxTokens,
-          value.temperature,
-          value.topP,
         ],
       );
     }
@@ -484,8 +466,7 @@ export async function initLlmCatalog() {
       const legacy = await client.query(
         `SELECT key, value FROM app_settings
           WHERE key IN (
-            'llm_model', 'llm_base_url', 'llm_max_tokens',
-            'llm_temperature', 'llm_top_p'
+            'llm_model', 'llm_base_url', 'llm_max_tokens'
           )`,
       );
       const legacySettings = Object.fromEntries(
@@ -498,15 +479,6 @@ export async function initLlmCatalog() {
         config.llm.maxTokens,
         { min: 256, max: 32768, integer: true },
       );
-      const temperature = safeNumber(
-        legacySettings.llm_temperature,
-        config.llm.temperature,
-        { min: 0, max: 2 },
-      );
-      const topP = safeNumber(legacySettings.llm_top_p, config.llm.topP, {
-        min: 0,
-        max: 1,
-      });
       const provider = await client.query(
         `INSERT INTO llm_providers (name, base_url, api_key_env, enabled)
          VALUES ('NVIDIA', $1, $2, true)
@@ -516,14 +488,12 @@ export async function initLlmCatalog() {
       await client.query(
         `INSERT INTO llm_models
            (provider_id, model_name, display_name, min_level, enabled,
-            is_default, max_tokens, temperature, top_p)
-         VALUES ($1,$2,$2,1,true,true,$3,$4,$5)`,
+            is_default, max_tokens)
+         VALUES ($1,$2,$2,1,true,true,$3)`,
         [
           provider.rows[0].id,
           modelName,
           maxTokens,
-          temperature,
-          topP,
         ],
       );
     }

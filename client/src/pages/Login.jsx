@@ -21,7 +21,7 @@ const USE_CASES = [
   },
 ];
 
-const FORMATS = [
+export const FORMATS = [
   {
     key: "flow",
     label: "Flow diagram",
@@ -85,7 +85,7 @@ const EXAMPLES = [
   },
 ];
 
-function DiagramThumb({ type }) {
+export function DiagramThumb({ type }) {
   const common = (
     <>
       <rect className="thumb-bg" x="0" y="0" width="180" height="120" rx="18" />
@@ -198,7 +198,7 @@ function DiagramThumb({ type }) {
   );
 }
 
-function ExampleVisual({ type }) {
+export function ExampleVisual({ type }) {
   return (
     <div className={`example-visual ${type}`} aria-hidden="true">
       <div className="source-lines">
@@ -220,7 +220,7 @@ function ExampleVisual({ type }) {
   );
 }
 
-function InputGraphic({ type }) {
+export function InputGraphic({ type }) {
   return (
     <div className={`input-graphic ${type}`} aria-hidden="true">
       <div className="input-doc">
@@ -243,7 +243,7 @@ function InputGraphic({ type }) {
   );
 }
 
-function StartButton({ compact = false }) {
+export function StartButton({ compact = false }) {
   return (
     <a className="landing-start" href="/auth/google">
       <span className="google-mark" aria-hidden="true">

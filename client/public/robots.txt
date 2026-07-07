@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /auth/
+Disallow: /admin
+Disallow: /create
+Disallow: /v/
+
+Sitemap: https://synthboard.click/sitemap.xml

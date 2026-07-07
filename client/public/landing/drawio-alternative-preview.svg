@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 610" role="img" aria-labelledby="title desc">
+  <title id="title">SynthBoard draw.io alternative preview</title>
+  <desc id="desc">Raw notes are converted by SynthBoard into an editable draw.io diagram.</desc>
+  <defs>
+    <linearGradient id="bg" x1="70" x2="850" y1="20" y2="580" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FBFF"/>
+      <stop offset=".55" stop-color="#F3F0FF"/>
+      <stop offset="1" stop-color="#E9FBFF"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="196" x2="720" y1="160" y2="455" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0BB6C9"/>
+      <stop offset=".52" stop-color="#6D5EFC"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="18" flood-color="#1E293B" flood-opacity=".14"/>
+    </filter>
+  </defs>
+
+  <rect width="920" height="610" rx="32" fill="url(#bg)"/>
+  <path d="M58 72h804M58 136h804M58 200h804M58 264h804M58 328h804M58 392h804M58 456h804M58 520h804M120 42v526M212 42v526M304 42v526M396 42v526M488 42v526M580 42v526M672 42v526M764 42v526" fill="none" stroke="#DDE6F2" stroke-width="1" opacity=".7"/>
+
+  <g filter="url(#shadow)">
+    <rect x="62" y="116" width="238" height="320" rx="22" fill="#FFFFFF" stroke="#D7DCEA"/>
+    <rect x="90" y="148" width="92" height="16" rx="8" fill="#DFF8FB"/>
+    <rect x="90" y="188" width="172" height="12" rx="6" fill="#CBD5E1"/>
+    <rect x="90" y="220" width="148" height="12" rx="6" fill="#CBD5E1"/>
+    <rect x="90" y="252" width="182" height="12" rx="6" fill="#CBD5E1"/>
+    <rect x="90" y="284" width="124" height="12" rx="6" fill="#CBD5E1"/>
+    <rect x="90" y="338" width="154" height="38" rx="10" fill="#F1EFFF" stroke="#D9D4FF"/>
+    <text x="110" y="362" fill="#5B4BD6" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="800">Raw notes</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="347" y="188" width="226" height="190" rx="26" fill="#FFFFFF" stroke="#D7DCEA"/>
+    <circle cx="460" cy="257" r="54" fill="url(#accent)" opacity=".95"/>
+    <path d="M437 259c22-48 56-48 46 0M433 277h54M432 241h56" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="388" y="327" width="144" height="24" rx="12" fill="#E6FBFF" stroke="#9DE8EF"/>
+    <text x="408" y="345" fill="#0F766E" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="800">SynthBoard AI</text>
+  </g>
+
+  <path d="M304 276h44M572 276h44" fill="none" stroke="url(#accent)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M337 258l24 18-24 18M606 258l24 18-24 18" fill="none" stroke="#6D5EFC" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g filter="url(#shadow)">
+    <rect x="622" y="92" width="240" height="384" rx="22" fill="#FFFFFF" stroke="#D7DCEA"/>
+    <rect x="650" y="124" width="184" height="40" rx="12" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <circle cx="672" cy="144" r="7" fill="#EF4444"/>
+    <circle cx="696" cy="144" r="7" fill="#F59E0B"/>
+    <circle cx="720" cy="144" r="7" fill="#14B8A6"/>
+
+    <rect x="660" y="208" width="72" height="42" rx="13" fill="#14B8A6" stroke="#FFFFFF" stroke-width="4"/>
+    <path d="M696 250v30" fill="none" stroke="#64748B" stroke-width="6" stroke-linecap="round"/>
+    <path d="M742 280l52 32-52 32-52-32z" fill="#FFF7ED" stroke="#F59E0B" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M794 312h28" fill="none" stroke="#64748B" stroke-width="6" stroke-linecap="round"/>
+    <rect x="786" y="368" width="52" height="40" rx="13" fill="#A855F7" stroke="#FFFFFF" stroke-width="4"/>
+    <path d="M742 344v24h44" fill="none" stroke="#64748B" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="657" y="394" width="112" height="28" rx="14" fill="#F1EFFF" stroke="#D9D4FF"/>
+    <text x="678" y="414" fill="#5B4BD6" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="800">draw.io</text>
+    <path d="M660 184h174M660 442h174" fill="none" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>

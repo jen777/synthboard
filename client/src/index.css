@@ -792,6 +792,82 @@ button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--da
   font-size: 14px; line-height: 1.5;
 }
 
+.drawio-alt-page .landing-lead {
+  max-width: 670px;
+}
+.drawio-alt-visual {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(240, 249, 255, 0.72)),
+    linear-gradient(90deg, rgba(11, 182, 201, 0.09), rgba(109, 94, 252, 0.1));
+}
+.drawio-comparison-section {
+  padding: 26px 0 30px;
+  border-top: 1px solid rgba(215, 220, 234, 0.78);
+}
+.comparison-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.comparison-head,
+.comparison-cell {
+  border: 1px solid rgba(215, 220, 234, 0.86);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-sm);
+}
+.comparison-head {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 8px;
+  color: #314158;
+  font-weight: 850;
+}
+.comparison-head.synth-head {
+  color: #4f46e5;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(241, 239, 255, 0.9));
+  border-color: #d9d4ff;
+}
+.comparison-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.comparison-cell {
+  min-height: 128px;
+  padding: 16px;
+  border-radius: 8px;
+}
+.comparison-cell span {
+  display: inline-flex;
+  margin-bottom: 10px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.comparison-cell p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.comparison-cell.synth-cell {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(241, 239, 255, 0.76));
+  border-color: #d9d4ff;
+}
+.comparison-cell.synth-cell span {
+  color: #5b4bd6;
+}
+.comparison-cell.synth-cell p {
+  color: #26324d;
+}
+
 .landing-final {
   margin: 28px 0 20px; padding: 20px;
   display: flex; align-items: center; justify-content: space-between; gap: 28px;
@@ -821,6 +897,8 @@ button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--da
   .good-inputs-layout { grid-template-columns: 1fr; }
   .use-case-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .format-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .comparison-board,
+  .comparison-row { grid-template-columns: 1fr; }
   .faq-grid { grid-template-columns: 1fr; }
   .landing-final { align-items: flex-start; flex-direction: column; }
   .dashboard-hero { align-items: flex-start; flex-direction: column; }

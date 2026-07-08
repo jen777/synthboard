@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import Layout from "./components/Layout.jsx";
 import Login from "./pages/Login.jsx";
 import DrawioAlternativeLanding from "./pages/DrawioAlternativeLanding.jsx";
+import Faq from "./pages/Faq.jsx";
 import TextToDrawioLanding from "./pages/TextToDrawioLanding.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Create from "./pages/Create.jsx";
@@ -47,6 +48,7 @@ export default function App() {
       {!user ? (
         <Routes>
           <Route path="/drawio-alternative" element={<DrawioAlternativeLanding />} />
+          <Route path="/faq" element={<Faq />} />
           <Route path="/text-to-drawio-diagram" element={<TextToDrawioLanding />} />
           <Route path="*" element={<Login />} />
         </Routes>

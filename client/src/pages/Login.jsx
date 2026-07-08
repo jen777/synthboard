@@ -254,6 +254,20 @@ export function StartButton({ compact = false }) {
   );
 }
 
+export function LandingFooter({ children }) {
+  return (
+    <footer className="landing-footer muted">
+      <span className="brand">
+        Synth<span className="dot">Board</span>
+      </span>
+      <span>{children}</span>
+      <nav className="landing-footer-links" aria-label="Footer">
+        <a href="/faq">FAQ</a>
+      </nav>
+    </footer>
+  );
+}
+
 export default function Login() {
   const params = new URLSearchParams(window.location.search);
   const error = params.get("error");
@@ -395,12 +409,9 @@ export default function Login() {
       </section>
       </div>
 
-      <footer className="landing-footer muted">
-        <span className="brand">
-          Synth<span className="dot">Board</span>
-        </span>
-        <span>Notes in, editable draw.io diagram visualizations out.</span>
-      </footer>
+      <LandingFooter>
+        Notes in, editable draw.io diagram visualizations out.
+      </LandingFooter>
     </main>
   );
 }

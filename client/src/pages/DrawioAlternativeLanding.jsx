@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import {
   DiagramThumb,
   InputGraphic,
+  LandingFooter,
   StartButton,
 } from "./Login.jsx";
 
@@ -344,12 +345,9 @@ export default function DrawioAlternativeLanding() {
         </section>
       </div>
 
-      <footer className="landing-footer muted">
-        <span className="brand">
-          Synth<span className="dot">Board</span>
-        </span>
-        <span>AI-generated first drafts, editable draw.io diagrams after.</span>
-      </footer>
+      <LandingFooter>
+        AI-generated first drafts, editable draw.io diagrams after.
+      </LandingFooter>
     </main>
   );
 }

@@ -4,6 +4,7 @@ import {
   ExampleVisual,
   FORMATS,
   InputGraphic,
+  LandingFooter,
   StartButton,
 } from "./Login.jsx";
 
@@ -321,12 +322,9 @@ export default function TextToDrawioLanding() {
         </section>
       </div>
 
-      <footer className="landing-footer muted">
-        <span className="brand">
-          Synth<span className="dot">Board</span>
-        </span>
-        <span>Text and transcripts in, editable draw.io diagrams out.</span>
-      </footer>
+      <LandingFooter>
+        Text and transcripts in, editable draw.io diagrams out.
+      </LandingFooter>
     </main>
   );
 }

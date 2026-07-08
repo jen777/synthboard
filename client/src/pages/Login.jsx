@@ -1,3 +1,5 @@
+import { DIAGRAM_STYLE_LINKS } from "./diagramUseCases.js";
+
 const USE_CASES = [
   {
     key: "transcripts",
@@ -26,11 +28,13 @@ export const FORMATS = [
     key: "flow",
     label: "Flow diagram",
     description: "Steps, decisions, and branches from a process.",
+    href: DIAGRAM_STYLE_LINKS.flow,
   },
   {
     key: "sequence",
     label: "UML sequence",
     description: "Actors and systems exchanging messages over time.",
+    href: DIAGRAM_STYLE_LINKS.sequence,
   },
   {
     key: "architecture",
@@ -41,26 +45,31 @@ export const FORMATS = [
     key: "mindmap",
     label: "Mind map",
     description: "A central concept expanded into related ideas.",
+    href: DIAGRAM_STYLE_LINKS.mindmap,
   },
   {
     key: "er",
-    label: "Entity relationship",
+    label: "ER diagram",
     description: "Data entities, fields, and relationships.",
+    href: DIAGRAM_STYLE_LINKS.er,
   },
   {
     key: "swimlane",
-    label: "Swimlane",
+    label: "Swimlane diagram",
     description: "A workflow split by teams, roles, or departments.",
+    href: DIAGRAM_STYLE_LINKS.swimlane,
   },
   {
     key: "timeline",
-    label: "Timeline",
+    label: "Timeline diagram",
     description: "Events, phases, and milestones in order.",
+    href: DIAGRAM_STYLE_LINKS.timeline,
   },
   {
     key: "org",
     label: "Org chart",
     description: "Hierarchies of people, roles, teams, or ownership.",
+    href: DIAGRAM_STYLE_LINKS.org,
   },
 ];
 
@@ -369,11 +378,24 @@ export default function Login() {
           aria-label="Supported diagram and visualization styles"
         >
           {FORMATS.map((format) => (
-            <article className="format-card" key={format.key}>
-              <DiagramThumb type={format.key} />
-              <h3>{format.label}</h3>
-              <p>{format.description}</p>
-            </article>
+            format.href ? (
+              <a
+                className="format-card format-link-card"
+                href={format.href}
+                key={format.key}
+              >
+                <DiagramThumb type={format.key} />
+                <h3>{format.label}</h3>
+                <p>{format.description}</p>
+                <span className="format-card-link">View use case</span>
+              </a>
+            ) : (
+              <article className="format-card" key={format.key}>
+                <DiagramThumb type={format.key} />
+                <h3>{format.label}</h3>
+                <p>{format.description}</p>
+              </article>
+            )
           ))}
         </div>
       </section>

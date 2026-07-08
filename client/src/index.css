@@ -342,6 +342,7 @@ button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--da
 }
 .landing-nav { padding: 14px clamp(18px, 4vw, 42px); }
 .landing-nav .brand { font-size: 20px; }
+.landing-nav a.brand:hover { text-decoration: none; }
 
 .landing-start {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
@@ -672,12 +673,31 @@ button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--da
   background: rgba(255, 255, 255, 0.88); color: #26324d;
   box-shadow: var(--shadow-sm);
 }
+.format-link-card {
+  display: block;
+  color: #26324d;
+  text-decoration: none;
+  transition: transform 0.12s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.format-link-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+  text-decoration: none;
+  transform: translateY(-2px);
+}
 .format-card h3 {
   margin: 10px 0 5px; color: var(--text);
   font-size: 15px; letter-spacing: 0; line-height: 1.2;
 }
 .format-card p {
   margin: 0; color: var(--muted); font-size: 13px; line-height: 1.42;
+}
+.format-card-link {
+  display: inline-flex;
+  margin-top: 10px;
+  color: #5b4bd6;
+  font-size: 12px;
+  font-weight: 850;
 }
 .format-card .diagram-thumb { height: 86px; }
 .diagram-thumb {
@@ -868,6 +888,98 @@ button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--da
   color: #26324d;
 }
 
+.diagram-use-case-page .landing-lead {
+  max-width: 680px;
+}
+.diagram-style-visual {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(240, 253, 250, 0.7)),
+    linear-gradient(90deg, rgba(11, 182, 201, 0.1), rgba(109, 94, 252, 0.1));
+}
+.diagram-style-preview {
+  min-height: 320px;
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) 36px minmax(0, 1.18fr);
+  gap: 12px;
+  align-items: center;
+  padding: 18px;
+  border-radius: 8px;
+  background:
+    linear-gradient(rgba(109, 94, 252, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11, 182, 201, 0.055) 1px, transparent 1px),
+    #ffffff;
+  background-size: 18px 18px, 18px 18px, auto;
+  border: 1px solid rgba(215, 220, 234, 0.9);
+}
+.diagram-style-source {
+  min-height: 190px;
+  padding: 18px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: var(--shadow-sm);
+}
+.diagram-style-source span {
+  display: inline-flex;
+  margin-bottom: 18px;
+  color: #5b4bd6;
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 850;
+}
+.diagram-style-source i {
+  display: block;
+  height: 9px;
+  margin-bottom: 13px;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+.diagram-style-source i:nth-child(2) { width: 94%; }
+.diagram-style-source i:nth-child(3) { width: 78%; }
+.diagram-style-source i:nth-child(4) { width: 88%; }
+.diagram-style-source i:nth-child(5) { width: 58%; margin-bottom: 0; }
+.diagram-style-preview .diagram-thumb {
+  width: 100%;
+  min-height: 190px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+.diagram-input-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.outcome-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.outcome-card {
+  min-height: 220px;
+  padding: 12px;
+  border: 1px solid rgba(215, 220, 234, 0.86);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-sm);
+}
+.outcome-card .diagram-thumb {
+  height: 100px;
+  margin-bottom: 12px;
+}
+.outcome-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+.related-style-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.related-style-card {
+  min-height: 244px;
+}
+
 .landing-final {
   margin: 28px 0 20px; padding: 20px;
   display: flex; align-items: center; justify-content: space-between; gap: 28px;
@@ -995,15 +1107,21 @@ button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--da
   .good-inputs-layout { grid-template-columns: 1fr; }
   .use-case-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .format-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .outcome-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .diagram-input-grid,
+  .related-style-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .comparison-board,
   .comparison-row { grid-template-columns: 1fr; }
   .faq-grid { grid-template-columns: 1fr; }
-  .faq-visual-flow { grid-template-columns: 1fr; }
-  .faq-visual-flow .visual-arrow {
+  .faq-visual-flow,
+  .diagram-style-preview { grid-template-columns: 1fr; }
+  .faq-visual-flow .visual-arrow,
+  .diagram-style-preview .visual-arrow {
     width: 2px; height: 22px; justify-self: center;
     background: linear-gradient(180deg, #0bb6c9, #6d5efc);
   }
-  .faq-visual-flow .visual-arrow::after {
+  .faq-visual-flow .visual-arrow::after,
+  .diagram-style-preview .visual-arrow::after {
     right: -4px; top: auto; bottom: -1px;
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
@@ -1052,7 +1170,8 @@ button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--da
   }
   .use-case-grid,
   .example-grid,
-  .format-grid {
+  .format-grid,
+  .outcome-grid {
     grid-template-columns: 1fr;
   }
   .landing-section { padding: 24px 0; }

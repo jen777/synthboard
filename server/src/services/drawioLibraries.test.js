@@ -16,6 +16,8 @@ const {
   buildIconSearchText,
   buildIconTsQuery,
   buildObjectAliases,
+  buildPlannedIconPrompt,
+  buildPlannedIconPromptContext,
   explicitIconIdsFromXml,
   extractDrawioLibraryObjects,
   selectPromptIconCandidates,
@@ -827,7 +829,7 @@ test("builds searchable aliases for common cloud library object names", () => {
   );
 });
 
-test("icon prompt keeps library object usage optional and sparse", () => {
+test("icon prompt requires exact matches and native-aspect sizing", () => {
   const prompt = buildIconPrompt([
     {
       id: "azure.storage",
@@ -841,13 +843,135 @@ test("icon prompt keeps library object usage optional and sparse", () => {
     },
   ]);
 
-  assert.match(prompt, /Optional draw\.io icon\/object context/);
-  assert.match(prompt, /Prefer standard draw\.io shapes first/);
-  assert.match(prompt, /Target 0-2 library-decorated vertices/);
-  assert.match(prompt, /Do not decorate ordinary services/);
+  assert.match(prompt, /Retrieved draw\.io icon\/logo\/object context/);
+  assert.match(prompt, /exact semantic match/);
+  assert.match(prompt, /never substitute a merely related logo or icon/);
   assert.match(prompt, /image icons or draw\.io object\/stencil styles/);
   assert.match(prompt, /synthIcon=<object id>/);
   assert.match(prompt, /exact library style/);
   assert.match(prompt, /synthIconSize=small\|medium\|large\|hero/);
+  assert.match(prompt, /preserves its aspect ratio/);
   assert.match(prompt, /azure\.storage: Blob Storage .*matches bucket\/file\/document/);
+});
+
+test("planned icon prompt keeps catalog candidates grouped by object", () => {
+  const prompt = buildPlannedIconPrompt([
+    {
+      key: "frontend",
+      label: "React frontend",
+      visual: "logo",
+      size: "large",
+      fallbackShape: "process",
+      candidates: [
+        {
+          id: "logos.react",
+          title: "React",
+          library_name: "Technology Logos",
+          provider: "Open source",
+          style_family: "brand",
+          search_text: "react frontend web logo",
+          width: 96,
+          height: 86,
+        },
+      ],
+    },
+    {
+      key: "approval",
+      label: "Approval decision",
+      visual: "shape",
+      size: "medium",
+      fallbackShape: "rhombus",
+      candidates: [
+        {
+          id: "misc.check",
+          title: "Check",
+          library_name: "Misc",
+          search_text: "check approval",
+        },
+      ],
+    },
+  ]);
+
+  assert.match(prompt, /grouped by planned object/);
+  assert.match(prompt, /frontend — React frontend/);
+  assert.match(prompt, /logos\.react: React/);
+  assert.match(prompt, /native 96x86/);
+  assert.match(prompt, /synthIconSize=<planned size>/);
+  assert.doesNotMatch(prompt, /approval — Approval decision/);
+  assert.doesNotMatch(prompt, /misc\.check/);
+});
+
+test("planned catalog lookup searches each object and only offers requested visual matches", async () => {
+  const searches = [];
+  const candidate = (id, title) => ({
+    id,
+    title,
+    library_id: "logos",
+    library_name: "Logos",
+    provider: "Open source",
+    style_family: "brand",
+    search_text: `${title} logo icon`,
+    width: 80,
+    height: 80,
+    score: 50,
+  });
+  const context = await buildPlannedIconPromptContext(
+    {
+      plan: {
+        objects: [
+          {
+            key: "react",
+            label: "React frontend",
+            role: "web application",
+            visual: "logo",
+            size: "large",
+            fallbackShape: "process",
+            searchTerms: ["React", "frontend"],
+          },
+          {
+            key: "postgres",
+            label: "Postgres",
+            role: "database",
+            visual: "icon",
+            size: "medium",
+            fallbackShape: "cylinder",
+            searchTerms: ["PostgreSQL", "database"],
+          },
+          {
+            key: "decision",
+            label: "Approved?",
+            role: "decision",
+            visual: "shape",
+            size: "medium",
+            fallbackShape: "rhombus",
+            searchTerms: ["approval"],
+          },
+        ],
+      },
+    },
+    {
+      searchIconObjects: async (searchText) => {
+        searches.push(searchText);
+        if (searchText.includes("React")) return [candidate("logos.react", "React")];
+        if (searchText.includes("Postgres")) {
+          return [candidate("logos.postgresql", "PostgreSQL")];
+        }
+        return [candidate("misc.approval", "Approval")];
+      },
+    },
+  );
+
+  assert.equal(searches.length, 3);
+  assert(searches.some((search) => /React frontend.*web application.*process.*React/.test(search)));
+  assert(searches.some((search) => /Postgres.*database.*cylinder.*PostgreSQL/.test(search)));
+  assert.deepEqual(
+    context.candidates.map((item) => item.id),
+    ["logos.react", "logos.postgresql"],
+  );
+  assert.equal(context.searchedObjects, 3);
+  assert.equal(context.matchedObjects, 2);
+  assert.equal(context.lookupErrors, 0);
+  assert.match(context.prompt, /logos\.react/);
+  assert.match(context.prompt, /logos\.postgresql/);
+  assert.doesNotMatch(context.prompt, /misc\.approval/);
 });

@@ -13,8 +13,8 @@ powered by admin-configured OpenAI-compatible LLM providers and models.
   Postgres, provider keys remain in environment variables, and users can select
   only models enabled for their account level.
 - **Embedded draw.io viewer** + one-click `.drawio` export
-- **Shape-first draw.io generation** with optional admin-managed icon catalog
-  support for deliberate, sparse custom object use
+- **Two-call draw.io generation** with an object/shape planning pass, plan-guided
+  admin icon-catalog retrieval, and a final XML rendering pass
 - **Node.js + Express + Postgres + React**, fully Dockerized
 
 ---
@@ -104,16 +104,21 @@ For local dev, set the Google redirect URI to
 
 ## How generation works
 
-The source text is sent to the LLM with a system prompt that defines the
-draw.io XML output contract, plus preset-specific guidance (flowchart, UML,
-sequence, ER, mind map, infographic). The response is parsed to a valid
-`<mxfile>` document, stored, and rendered.
+Generation uses two LLM calls. The first analyzes the source into a bounded JSON
+plan containing objects, visual intent, fallback draw.io shapes, relative sizes,
+layout, and supported connectors. The server then searches the icon catalog for
+each planned object and groups exact candidates by the object they matched. The
+second call receives the source, approved plan, and grouped catalog results and
+returns the final `<mxfile>` document. The server replaces exact `synthIcon`
+references with stored library styles, applies visual defaults, stores the XML,
+and records combined token usage plus per-stage timing telemetry.
 
 ### Draw.io icon libraries
 
 SynthBoard can index public or local draw.io custom libraries (`<mxlibrary>`
-XML files), but normal generation is shape-first by default. The LLM is guided
-to use standard draw.io shapes and basic built-in objects such as rounded
+XML files). The planning call marks concrete products, brands, and recognizable
+objects for logo/icon lookup while assigning standard draw.io fallback shapes to
+every object. Abstract concepts continue to use built-in objects such as rounded
 rectangles, process shapes, cylinders, diamonds, document shapes, clouds,
 actors, hexagons, swimlanes, groups, and simple connectors.
 
@@ -136,16 +141,17 @@ npm run ingest:drawio-libraries -- --manifest ./drawio-libraries/sources.example
 ```
 
 The ingester stores compact searchable metadata plus the exact draw.io object
-styles in Postgres. The generation path no longer consults the custom catalog by
-default; set `DRAWIO_ICON_CATALOG_GENERATION=true` only if you deliberately want
-to reintroduce catalog candidates into the LLM prompt. Even then, the prompt
-treats library objects as optional and sparse: use standard shapes first, and
-decorate at most 0-2 unmistakable concrete nodes when an exact object is clearly
-better than a shape.
+styles in Postgres. After the planning call, generation searches the catalog
+separately for each planned object, keeps results grouped by that object, and
+offers a bounded candidate set to the diagram call. The second call may use an
+icon, logo, or library image only when it is an exact semantic match from the
+correct group; otherwise it uses the planned standard shape. If the catalog is
+empty or temporarily unavailable, generation still proceeds with those fallback
+shapes.
 
-If explicit icon placeholders are supplied by an opt-in prompt or a direct
-post-processing call, the server can replace `synthIcon=<icon id>` with the
-exact draw.io image/object style. The LLM can also request size changes with
+When the diagram call supplies an explicit icon placeholder, the server replaces
+`synthIcon=<icon id>` with the exact draw.io image/object style. The LLM can also
+request size changes with
 `synthIconSize=small|medium|large|hero`, `synthIconScale=0.5-2.5`, or explicit
 `synthIconWidth=<px>` and `synthIconHeight=<px>` style keys. Width-only and
 height-only requests preserve the object's native aspect ratio. When an icon is
@@ -166,18 +172,15 @@ app", "React frontend", "Node backend", "Postgres", "S3 files", "auth",
 "serverless job", "webhook events", and "blob bucket" so existing catalogs are
 easier to match. Reingest libraries after changing alias/search logic so stored
 object metadata gets refreshed as well.
-Catalog lookup uses broad OR-style full-text matching and then ranks the
-resulting candidates against the expanded terms, so a long prompt can still
-retrieve useful partial matches without requiring every concept to appear in one
-library object. If a term cannot safely participate in full-text syntax, the
-lookup still falls back to substring matching for the same candidate search.
-Prompt candidates are also lightly de-duplicated by object title so repeated
-variants from one library do not crowd out distinct concepts like databases,
-queues, storage, users, or services.
-When icon catalog generation is enabled, exact object IDs are preferred, but the
-post-processor can resolve explicit placeholders against the fetched candidate
-set by normalized object ID or title when the model emits a minor
-punctuation/case variant. Automatic custom-icon fallback is disabled by default:
+Each plan-driven catalog lookup uses broad OR-style full-text matching and then
+ranks candidates against that object's expanded terms. If a term cannot safely
+participate in full-text syntax, lookup still falls back to substring matching.
+Candidates are selected round-robin across planned objects so one concept or
+library cannot crowd every other needed visual out of the bounded prompt.
+Exact object IDs are preferred, but the post-processor can resolve explicit
+placeholders against the fetched candidate set by normalized object ID or title
+when the model emits a minor punctuation/case variant. Automatic custom-icon
+fallback remains disabled:
 the automatic target is `0`, so the server does not decorate plain nodes with
 catalog icons just because their labels match. Direct utility calls can still
 pass an explicit target to exercise targeted auto-apply.
@@ -191,9 +194,10 @@ rhombuses for decisions, document shapes for files, hexagons for queues/events,
 actor shapes for users/people, clouds for network/cloud labels, and ellipses for
 teams/groups.
 
-Generation runs these enrichment stages as one server-side post-processing
-pipeline: explicit icon cleanup/replacement when candidates are deliberately
-provided, visual defaults, shape inference, and final visual-summary telemetry.
+After the two model calls and catalog lookup, generation runs these enrichment
+stages as one server-side post-processing pipeline: explicit icon
+cleanup/replacement, visual defaults, shape inference, and final visual-summary
+telemetry.
 Exact library object styles such as `shape=mxgraph...` are preserved without
 generic fill/stroke defaults and counted as library visual objects in summary
 metrics. They also count toward styled coverage, because the library style is

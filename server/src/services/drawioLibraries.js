@@ -4,9 +4,9 @@ import { query, pool } from "../db.js";
 
 const MAX_PROMPT_OBJECTS = 24;
 const MAX_SEARCH_ROWS = 5000;
-const ENABLE_GENERATION_ICON_CATALOG = ["1", "true", "yes"].includes(
-  String(process.env.DRAWIO_ICON_CATALOG_GENERATION || "").toLowerCase(),
-);
+const MAX_PLANNED_OBJECT_SEARCHES = 24;
+const MAX_CANDIDATES_PER_PLANNED_OBJECT = 3;
+const PLANNED_SEARCH_BATCH_SIZE = 4;
 const ICON_SIZE_PRESETS = {
   small: 0.75,
   medium: 1,
@@ -649,11 +649,6 @@ export function buildIconSearchText({ preset, sourceText, title }) {
   ]).join(" ");
 }
 
-export function shouldUseIconCatalog({ preset, sourceText, title }) {
-  if (!ENABLE_GENERATION_ICON_CATALOG) return false;
-  return words(`${title || ""} ${preset || ""} ${sourceText || ""}`).length > 0;
-}
-
 function iconPromptKeywords(candidate, { limit = 8 } = {}) {
   const blocked = new Set(
     words(
@@ -675,7 +670,6 @@ function iconPromptKeywords(candidate, { limit = 8 } = {}) {
 export function buildIconPrompt(candidates) {
   if (!candidates?.length) return "";
 
-  const dominant = candidates[0];
   const lines = candidates.map((c) => {
     const size =
       c.width && c.height ? `, native ${Math.round(c.width)}x${Math.round(c.height)}` : "";
@@ -684,28 +678,129 @@ export function buildIconPrompt(candidates) {
     return `- ${c.id}: ${c.title} (${c.provider || c.library_name}, ${c.style_family || "same set"}${size}${keywords})`;
   });
 
-  return `Optional draw.io icon/object context:
-Prefer standard draw.io shapes first: rounded rectangles, process shapes, cylinders, diamonds, documents, clouds, actors, hexagons, swimlanes, groups, and simple connectors. Use "${dominant.library_name}" only when an exact listed object is clearly better than a standard shape.
-Use listed library objects sparingly. Target 0-2 library-decorated vertices, only for unmistakable concrete nodes that would otherwise be ambiguous. Do not decorate ordinary services, datastores, actors, teams, documents, milestones, or control-flow details when a standard draw.io shape communicates the role.
-Listed objects can be image icons or draw.io object/stencil styles. When a listed object fits a vertex, add synthIcon=<object id> to that vertex's style; the server will replace it with the exact library style. Keep the node label in value. Do not invent object ids.
-You may request object size in the same style with synthIconSize=small|medium|large|hero, synthIconScale=0.5-2.5, or explicit synthIconWidth=<px>;synthIconHeight=<px>. Keep library objects secondary to the main shape-based layout.
+  return `Retrieved draw.io icon/logo/object context:
+Use a listed library object when it is an exact semantic match for a concrete planned object. Use the planned standard draw.io fallback shape when no listed object is exact; never substitute a merely related logo or icon.
+Listed objects can be image icons or draw.io object/stencil styles. To use one, add synthIcon=<object id> to that vertex's style; the server will replace it with the exact library style. Keep the node label in value. Do not invent object ids.
+Set synthIconSize=small|medium|large|hero so the server scales from the object's native dimensions and preserves its aspect ratio. Use synthIconScale=0.5-2.5 or a single explicit synthIconWidth=<px> or synthIconHeight=<px> only when the plan needs finer sizing.
 Object ids:
 ${lines.join("\n")}`;
 }
 
-export async function buildIconPromptContext({ preset, sourceText, title }) {
-  if (!shouldUseIconCatalog({ preset, sourceText, title })) {
-    return { prompt: "", candidates: [] };
+function plannedObjectSearchText(object) {
+  return unique([
+    object.label,
+    object.role,
+    object.fallbackShape,
+    ...(Array.isArray(object.searchTerms) ? object.searchTerms : []),
+  ]).join(" ");
+}
+
+function plannedCandidateLine(candidate) {
+  const size =
+    candidate.width && candidate.height
+      ? `, native ${Math.round(candidate.width)}x${Math.round(candidate.height)}`
+      : "";
+  const keywordText = iconPromptKeywords(candidate);
+  const keywords = keywordText ? `, matches ${keywordText}` : "";
+  return `    - ${candidate.id}: ${candidate.title} (${candidate.provider || candidate.library_name}, ${candidate.style_family || "library object"}${size}${keywords})`;
+}
+
+export function buildPlannedIconPrompt(matches) {
+  const usable = (matches || []).filter(
+    (match) => match.visual !== "shape" && match.candidates?.length > 0,
+  );
+  if (usable.length === 0) return "";
+
+  const groups = usable.map((match) => {
+    const size = match.size || "medium";
+    return [
+      `- ${match.key} — ${match.label} (planned visual: ${match.visual}, planned size: ${size}, fallback shape: ${match.fallbackShape || "rounded rectangle"})`,
+      ...match.candidates.map(plannedCandidateLine),
+    ].join("\n");
+  });
+
+  return `Retrieved draw.io library matches, grouped by planned object:
+Use icons, logos, or library images only from the candidate group for that planned object. Choose a candidate only when it is an exact semantic match. Otherwise use the object's planned fallback shape. Never invent, alter, or borrow an object id from another group.
+For every chosen library object, add synthIcon=<exact object id> and synthIconSize=<planned size> to the vertex style. The server applies the exact stored library style and scales from native dimensions while preserving aspect ratio. Keep a readable text label below the visual and leave enough whitespace for it.
+${groups.join("\n")}`;
+}
+
+function selectPlannedCandidates(matches, limit = MAX_PROMPT_OBJECTS) {
+  const selected = [];
+  const selectedIds = new Set();
+  const usable = matches.filter((match) => match.visual !== "shape");
+
+  for (let rank = 0; rank < MAX_CANDIDATES_PER_PLANNED_OBJECT; rank++) {
+    for (const match of usable) {
+      const candidate = match.candidates?.[rank];
+      if (!candidate || selectedIds.has(candidate.id)) continue;
+      selected.push(candidate);
+      selectedIds.add(candidate.id);
+      if (selected.length >= limit) return { selected, selectedIds };
+    }
   }
 
-  const candidates = await searchIconObjects(
-    buildIconSearchText({ preset, sourceText, title }),
-  );
-  if (candidates.length === 0) return { prompt: "", candidates: [] };
+  return { selected, selectedIds };
+}
+
+/**
+ * Search the catalog after the LLM has identified the diagram's concrete
+ * objects. Matches remain grouped by planned object so the diagram call cannot
+ * confuse a related icon with the object it was retrieved for.
+ */
+export async function buildPlannedIconPromptContext({ plan }, dependencies = {}) {
+  const objects = (plan?.objects || []).slice(0, MAX_PLANNED_OBJECT_SEARCHES);
+  const searchObjects = dependencies.searchIconObjects || searchIconObjects;
+  const matches = [];
+  let lookupErrors = 0;
+
+  for (let index = 0; index < objects.length; index += PLANNED_SEARCH_BATCH_SIZE) {
+    const batch = objects.slice(index, index + PLANNED_SEARCH_BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map(async (object) => {
+        const searchText = plannedObjectSearchText(object);
+        if (!searchText) return { object, candidates: [] };
+        try {
+          return {
+            object,
+            candidates: await searchObjects(searchText, {
+              limit: MAX_CANDIDATES_PER_PLANNED_OBJECT,
+            }),
+          };
+        } catch {
+          lookupErrors++;
+          return { object, candidates: [] };
+        }
+      }),
+    );
+
+    for (const { object, candidates } of results) {
+      matches.push({
+        key: object.key,
+        label: object.label,
+        visual: object.visual,
+        size: object.size,
+        fallbackShape: object.fallbackShape,
+        candidates,
+      });
+    }
+  }
+
+  const { selected, selectedIds } = selectPlannedCandidates(matches);
+  const promptMatches = matches.map((match) => ({
+    ...match,
+    candidates: match.candidates.filter((candidate) => selectedIds.has(candidate.id)),
+  }));
 
   return {
-    candidates,
-    prompt: buildIconPrompt(candidates),
+    candidates: selected,
+    matches: promptMatches,
+    prompt: buildPlannedIconPrompt(promptMatches),
+    searchedObjects: objects.length,
+    matchedObjects: promptMatches.filter(
+      (match) => match.visual !== "shape" && match.candidates.length > 0,
+    ).length,
+    lookupErrors,
   };
 }
 

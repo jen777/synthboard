@@ -9,17 +9,37 @@ process.env.NVIDIA_API_KEY ||= "test-nvidia-api-key";
 
 const {
   applyVisualDefaults,
+  buildPlanningPrompt,
   buildGenerationPrompt,
+  combineUsage,
+  generateDrawio,
+  parseDiagramPlan,
   postProcessDrawioXml,
   summarizeDrawioVisuals,
   summarizeIconCandidate,
 } = await import("./llm.js");
 
-test("generation prompt includes shape-first visual design requirements", () => {
+test("generation prompt includes plan-driven visual design requirements", () => {
   const prompt = buildGenerationPrompt({
     presetDef: {
       label: "System Architecture",
       guidance: "Produce a SYSTEM / NETWORK ARCHITECTURE DIAGRAM.",
+    },
+    diagramPlan: {
+      title: "Checkout architecture",
+      layout: "left-to-right",
+      objects: [
+        {
+          key: "api",
+          label: "API",
+          visual: "icon",
+          fallbackShape: "process",
+          size: "large",
+          width: 160,
+          height: 70,
+        },
+      ],
+      connectors: [],
     },
     iconPrompt: "Icon ids:\n- azure.database: Database",
     title: "Checkout architecture",
@@ -33,7 +53,175 @@ test("generation prompt includes shape-first visual design requirements", () => 
   assert.match(prompt, /diamonds for decisions/);
   assert.match(prompt, /Do not use custom image icons/);
   assert.match(prompt, /Icon ids:\n- azure\.database: Database/);
+  assert.match(prompt, /Approved diagram plan from step 1:/);
+  assert.match(prompt, /"fallbackShape": "process"/);
+  assert.match(prompt, /synthIconSize/);
   assert.match(prompt, /Return only the draw\.io <mxfile> XML\./);
+});
+
+test("planning prompt and parser produce a bounded object/connector plan", () => {
+  const planningPrompt = buildPlanningPrompt({
+    presetDef: {
+      label: "System Architecture",
+      guidance: "Produce a SYSTEM / NETWORK ARCHITECTURE DIAGRAM.",
+    },
+    title: "Checkout",
+    sourceText: "React sends orders to the API and Postgres.",
+  });
+  assert.match(planningPrompt, /Source material to analyze:/);
+  assert.match(planningPrompt, /Return only the structured JSON diagram plan/);
+
+  const plan = parseDiagramPlan(`Here is the plan:\n\`\`\`json
+{
+  "title": "Checkout",
+  "summary": "Order flow",
+  "layout": "left-to-right",
+  "objects": [
+    {"key":"React UI","label":"React UI","role":"frontend","visual":"logo","fallbackShape":"process","size":"large","width":180,"height":80,"searchTerms":["React","frontend"]},
+    {"key":"Database","label":"Postgres","role":"database","visual":"icon","fallbackShape":"cylinder","size":"medium","width":160,"height":70,"searchTerms":["PostgreSQL","database"]}
+  ],
+  "connectors": [{"from":"React UI","to":"Database","label":"writes","direction":"forward"}]
+}
+\`\`\``);
+
+  assert.equal(plan.title, "Checkout");
+  assert.equal(plan.layout, "left-to-right");
+  assert.deepEqual(
+    plan.objects.map((object) => [object.key, object.visual, object.size]),
+    [
+      ["react-ui", "logo", "large"],
+      ["database", "icon", "medium"],
+    ],
+  );
+  assert.deepEqual(plan.connectors, [
+    {
+      from: "react-ui",
+      to: "database",
+      label: "writes",
+      direction: "forward",
+    },
+  ]);
+});
+
+test("two-step generation makes a planning call before the XML call", async () => {
+  const calls = [];
+  const planJson = JSON.stringify({
+    title: "Checkout flow",
+    summary: "Frontend to database",
+    layout: "left-to-right",
+    objects: [
+      {
+        key: "frontend",
+        label: "React frontend",
+        role: "web application",
+        visual: "logo",
+        fallbackShape: "process",
+        size: "large",
+        width: 180,
+        height: 80,
+        searchTerms: ["React", "frontend"],
+      },
+      {
+        key: "database",
+        label: "Postgres",
+        role: "database",
+        visual: "icon",
+        fallbackShape: "cylinder",
+        size: "medium",
+        width: 150,
+        height: 70,
+        searchTerms: ["PostgreSQL", "database"],
+      },
+    ],
+    connectors: [
+      { from: "frontend", to: "database", label: "writes", direction: "forward" },
+    ],
+  });
+  const diagramXml = `<mxfile host="synthboard"><diagram id="d1" name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="frontend" value="React frontend" style="shape=process;" vertex="1" parent="1"><mxGeometry x="20" y="40" width="180" height="80" as="geometry"/></mxCell><mxCell id="database" value="Postgres" style="shape=cylinder;" vertex="1" parent="1"><mxGeometry x="280" y="40" width="150" height="70" as="geometry"/></mxCell><mxCell id="edge" edge="1" parent="1" source="frontend" target="database"><mxGeometry relative="1" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>`;
+  const outputs = [
+    {
+      text: planJson,
+      usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+    },
+    {
+      text: diagramXml,
+      usage: { prompt_tokens: 40, completion_tokens: 50, total_tokens: 90 },
+    },
+  ];
+
+  const createCompletion = async (request) => {
+    const output = outputs[calls.length];
+    calls.push(request);
+    return {
+      async *[Symbol.asyncIterator]() {
+        yield { choices: [{ delta: { content: output.text } }] };
+        yield {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: output.usage,
+        };
+      },
+    };
+  };
+
+  const result = await generateDrawio(
+    {
+      preset: "architecture",
+      sourceText: "React sends data to Postgres.",
+      title: "Checkout flow",
+      maxSourceChars: 7000,
+      modelConfig: {
+        id: 7,
+        modelName: "test-model",
+        maxTokens: 4096,
+        provider: {
+          id: 3,
+          name: "Test provider",
+          apiKey: "test-key",
+        },
+      },
+    },
+    {
+      createCompletion,
+      buildIconContext: async () => ({
+        prompt: "No exact catalog match was found; use planned fallback shapes.",
+        candidates: [],
+        matches: [],
+        searchedObjects: 2,
+        matchedObjects: 0,
+        lookupErrors: 0,
+      }),
+    },
+  );
+
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].messages[0].content, /planning stage/);
+  assert.match(calls[0].messages[1].content, /structured JSON diagram plan/);
+  assert.match(calls[1].messages[0].content, /OUTPUT CONTRACT/);
+  assert.match(calls[1].messages[1].content, /Approved diagram plan from step 1/);
+  assert.match(calls[1].messages[1].content, /"label": "React frontend"/);
+  assert.match(calls[1].messages[1].content, /No exact catalog match was found/);
+  assert.deepEqual(result.usage, {
+    prompt_tokens: 50,
+    completion_tokens: 70,
+    total_tokens: 120,
+  });
+  assert.equal(result.meta.llmCalls, 2);
+  assert.equal(result.meta.planObjectCount, 2);
+  assert.equal(result.meta.planConnectorCount, 1);
+  assert.equal(result.meta.plannedLibraryVisualCount, 2);
+  assert.equal(result.meta.iconSearchedObjectCount, 2);
+  assert.match(result.xml, /<mxfile/);
+});
+
+test("usage aggregation sums both LLM calls", () => {
+  assert.deepEqual(
+    combineUsage(
+      { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 },
+      { prompt_tokens: 11, completion_tokens: 13, total_tokens: 24 },
+    ),
+    { prompt_tokens: 16, completion_tokens: 20, total_tokens: 36 },
+  );
+  assert.equal(combineUsage(undefined, null), undefined);
 });
 
 test("visual defaults polish unstyled non-icon vertices", () => {

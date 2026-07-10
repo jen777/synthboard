@@ -58,6 +58,10 @@ export const api = {
     iconLibraries: () => request("/api/admin/icon-libraries"),
     iconLibraryObjects: (id) =>
       request(`/api/admin/icon-libraries/${encodeURIComponent(id)}/objects`),
+    iconLibraryObjectPreview: (libraryId, objectId) =>
+      request(
+        `/api/admin/icon-libraries/${encodeURIComponent(libraryId)}/objects/${encodeURIComponent(objectId)}/preview`,
+      ),
     uploadIconLibrary: (payload) =>
       request("/api/admin/icon-libraries", {
         method: "POST",

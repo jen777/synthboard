@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
@@ -11,6 +11,41 @@ const TABS = [
   { key: "users", label: "Users" },
   { key: "settings", label: "Settings" },
 ];
+
+const DRAWIO_VIEWER_SRC =
+  "https://viewer.diagrams.net/js/viewer-static.min.js";
+let drawioViewerPromise = null;
+
+function loadDrawioViewer() {
+  if (window.GraphViewer) return Promise.resolve(window.GraphViewer);
+  if (drawioViewerPromise) return drawioViewerPromise;
+
+  drawioViewerPromise = new Promise((resolve, reject) => {
+    let script = document.querySelector(`script[src="${DRAWIO_VIEWER_SRC}"]`);
+    const handleLoad = () => {
+      if (window.GraphViewer) resolve(window.GraphViewer);
+      else reject(new Error("The draw.io preview renderer did not initialize."));
+    };
+    const handleError = () => reject(new Error("Could not load icon previews."));
+
+    if (!script) {
+      script = document.createElement("script");
+      script.src = DRAWIO_VIEWER_SRC;
+      script.async = true;
+      script.addEventListener("load", handleLoad, { once: true });
+      script.addEventListener("error", handleError, { once: true });
+      document.head.appendChild(script);
+      return;
+    }
+    script.addEventListener("load", handleLoad, { once: true });
+    script.addEventListener("error", handleError, { once: true });
+  }).catch((error) => {
+    drawioViewerPromise = null;
+    throw error;
+  });
+
+  return drawioViewerPromise;
+}
 
 export default function Admin() {
   const [tab, setTab] = useState("stats");
@@ -1036,6 +1071,110 @@ function LlmCatalog() {
 }
 
 // ── Draw.io icon libraries ────────────────────────────────────
+function IconObjectPreview({ libraryId, object }) {
+  const shellRef = useRef(null);
+  const [visible, setVisible] = useState(false);
+  const [previewXml, setPreviewXml] = useState(null);
+  const [previewError, setPreviewError] = useState(null);
+
+  useEffect(() => {
+    const element = shellRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return undefined;
+    if (object.has_preview === false) {
+      setPreviewError("No preview data");
+      return undefined;
+    }
+
+    let cancelled = false;
+    api.admin
+      .iconLibraryObjectPreview(libraryId, object.id)
+      .then((data) => {
+        if (cancelled) return;
+        if (data.previewXml) setPreviewXml(data.previewXml);
+        else setPreviewError("No preview data");
+      })
+      .catch((error) => {
+        if (!cancelled) setPreviewError(error.message || "Preview unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [libraryId, object.has_preview, object.id, visible]);
+
+  useEffect(() => {
+    if (!previewXml) return undefined;
+    let cancelled = false;
+    let frame;
+    loadDrawioViewer()
+      .then((viewer) => {
+        frame = requestAnimationFrame(() => {
+          if (!cancelled) viewer.processElements();
+        });
+      })
+      .catch((error) => {
+        if (!cancelled) setPreviewError(error.message || "Preview unavailable");
+      });
+    return () => {
+      cancelled = true;
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [previewXml]);
+
+  const viewerConfig = previewXml
+    ? JSON.stringify({
+        xml: previewXml,
+        nav: false,
+        resize: false,
+        center: true,
+        border: 4,
+        toolbar: "",
+        lightbox: false,
+        tooltips: false,
+        "auto-fit": true,
+        "allow-zoom-in": true,
+        "max-height": 96,
+        "browser-translate": false,
+      })
+    : null;
+
+  return (
+    <div
+      ref={shellRef}
+      className="object-preview-shell"
+      role="img"
+      aria-label={`${object.title} preview`}
+      title={previewError || object.title}
+    >
+      {viewerConfig ? (
+        <div className="mxgraph object-preview" data-mxgraph={viewerConfig} />
+      ) : (
+        <span className="object-preview-state">
+          {previewError || (visible ? "Loading preview…" : "Preview")}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function IconLibraries() {
   const [libraries, setLibraries] = useState(null);
   const [objects, setObjects] = useState([]);
@@ -1297,9 +1436,15 @@ function IconLibraries() {
           ) : (
             <div className="object-list">
               {objects.map((object) => (
-                <div key={object.id} className="object-row">
-                  <span>{object.title}</span>
-                  <small className="muted">{object.id}</small>
+                <div key={`${selected.id}:${object.id}`} className="object-row">
+                  <IconObjectPreview
+                    libraryId={selected.id}
+                    object={object}
+                  />
+                  <div className="object-copy">
+                    <span>{object.title}</span>
+                    <small className="muted">{object.id}</small>
+                  </div>
                 </div>
               ))}
             </div>

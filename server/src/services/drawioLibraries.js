@@ -8,11 +8,12 @@ const MAX_PLANNED_OBJECT_SEARCHES = 24;
 const MAX_CANDIDATES_PER_PLANNED_OBJECT = 3;
 const PLANNED_SEARCH_BATCH_SIZE = 4;
 const ICON_SIZE_PRESETS = {
-  small: 0.75,
-  medium: 1,
-  large: 1.35,
-  hero: 1.7,
+  small: { width: 28, height: 24 },
+  medium: { width: 40, height: 34 },
+  large: { width: 52, height: 44 },
+  hero: { width: 68, height: 56 },
 };
+const MAX_ICON_BOUNDS = { width: 96, height: 72 };
 const AUTO_ICON_DEFAULT_TARGET = 0;
 const AUTO_ICON_MIN_SCORE = 12;
 const AUTO_ICON_MAX_REUSE = 3;
@@ -532,13 +533,50 @@ export async function listIconLibraries() {
 
 export async function listIconObjects(libraryId) {
   const { rows } = await query(
-    `SELECT id, title, aliases, width, height, aspect, created_at
+    `SELECT id, title, aliases, width, height, aspect, created_at,
+            (cell_xml IS NOT NULL OR style IS NOT NULL) AS has_preview
        FROM drawio_icon_objects
       WHERE library_id = $1
       ORDER BY title`,
     [libraryId],
   );
   return rows;
+}
+
+export function buildIconPreviewXml({ id, title, width, height, style, cellXml }) {
+  const source = String(cellXml || "").trim();
+  if (/<mxfile\b/i.test(source)) return source;
+  if (/<mxGraphModel\b/i.test(source)) {
+    return `<mxfile host="synthboard"><diagram id="preview" name="Preview">${source}</diagram></mxfile>`;
+  }
+  if (!style) return null;
+
+  const previewWidth = boundedNumber(width, { min: 16, max: 320 }) || 80;
+  const previewHeight = boundedNumber(height, { min: 16, max: 240 }) || 80;
+  return `<mxfile host="synthboard"><diagram id="preview" name="Preview"><mxGraphModel page="0" background="none"><root><mxCell id="0" /><mxCell id="1" parent="0" /><mxCell id="${xmlAttr(id || "preview-object")}" value="${xmlAttr(title || "")}" style="${xmlAttr(style)}" vertex="1" parent="1"><mxGeometry x="0" y="0" width="${previewWidth}" height="${previewHeight}" as="geometry" /></mxCell></root></mxGraphModel></diagram></mxfile>`;
+}
+
+export async function getIconObjectPreview(libraryId, objectId) {
+  const { rows } = await query(
+    `SELECT id, title, width, height, style, cell_xml
+       FROM drawio_icon_objects
+      WHERE library_id = $1 AND id = $2`,
+    [libraryId, objectId],
+  );
+  const object = rows[0];
+  if (!object) return null;
+  return {
+    id: object.id,
+    title: object.title,
+    previewXml: buildIconPreviewXml({
+      id: object.id,
+      title: object.title,
+      width: object.width,
+      height: object.height,
+      style: object.style,
+      cellXml: object.cell_xml,
+    }),
+  };
 }
 
 export async function deleteIconLibrary(libraryId) {
@@ -681,7 +719,7 @@ export function buildIconPrompt(candidates) {
   return `Retrieved draw.io icon/logo/object context:
 Use a listed library object when it is an exact semantic match for a concrete planned object. Use the planned standard draw.io fallback shape when no listed object is exact; never substitute a merely related logo or icon.
 Listed objects can be image icons or draw.io object/stencil styles. To use one, add synthIcon=<object id> to that vertex's style; the server will replace it with the exact library style. Keep the node label in value. Do not invent object ids.
-Set synthIconSize=small|medium|large|hero so the server scales from the object's native dimensions and preserves its aspect ratio. Use synthIconScale=0.5-2.5 or a single explicit synthIconWidth=<px> or synthIconHeight=<px> only when the plan needs finer sizing.
+Set synthIconSize=small|medium|large|hero so the server fits the object into compact bounds, preserves its native aspect ratio, and keeps the original geometry center fixed. Prefer medium; use large or hero only for a genuinely primary visual. Do not emit explicit width, height, or scale controls during normal generation.
 Object ids:
 ${lines.join("\n")}`;
 }
@@ -721,7 +759,7 @@ export function buildPlannedIconPrompt(matches) {
 
   return `Retrieved draw.io library matches, grouped by planned object:
 Use icons, logos, or library images only from the candidate group for that planned object. Choose a candidate only when it is an exact semantic match. Otherwise use the object's planned fallback shape. Never invent, alter, or borrow an object id from another group.
-For every chosen library object, add synthIcon=<exact object id> and synthIconSize=<planned size> to the vertex style. The server applies the exact stored library style and scales from native dimensions while preserving aspect ratio. Keep a readable text label below the visual and leave enough whitespace for it.
+For every chosen library object, add synthIcon=<exact object id> and synthIconSize=<planned size> to the vertex style. Do not add synthIconWidth, synthIconHeight, or synthIconScale. The server applies the exact stored library style, fits it into compact bounds, preserves native aspect ratio, and recenters it on the original vertex geometry. Keep a readable text label below the visual and leave enough whitespace for it.
 ${groups.join("\n")}`;
 }
 
@@ -854,49 +892,100 @@ function stripSynthIconStyleKeys(style) {
 }
 
 function requestedIconSize(requestedStyle, icon) {
-  const baseWidth = boundedNumber(icon.width, { min: 24, max: 320 }) || 96;
-  const baseHeight = boundedNumber(icon.height, { min: 24, max: 240 }) || 72;
-  const aspect = baseWidth / baseHeight || 1;
+  const rawWidth = Number(icon.width);
+  const rawHeight = Number(icon.height);
+  const nativeWidth = Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : 64;
+  const nativeHeight = Number.isFinite(rawHeight) && rawHeight > 0 ? rawHeight : 64;
+  const aspect = Math.min(6, Math.max(1 / 6, nativeWidth / nativeHeight || 1));
 
   const preset = styleValueCaseInsensitive(requestedStyle, "synthIconSize")?.toLowerCase();
-  const presetScale = ICON_SIZE_PRESETS[preset] || null;
+  const presetBounds = ICON_SIZE_PRESETS[preset] || null;
   const explicitScale = boundedNumber(styleValueCaseInsensitive(requestedStyle, "synthIconScale"), {
     min: 0.35,
     max: 3,
   });
-  const scale = explicitScale || presetScale;
 
-  let width = boundedNumber(styleValueCaseInsensitive(requestedStyle, "synthIconWidth"), {
-    min: 24,
-    max: 360,
+  const width = boundedNumber(styleValueCaseInsensitive(requestedStyle, "synthIconWidth"), {
+    min: 16,
+    max: MAX_ICON_BOUNDS.width,
   });
-  let height = boundedNumber(styleValueCaseInsensitive(requestedStyle, "synthIconHeight"), {
-    min: 24,
-    max: 280,
+  const height = boundedNumber(styleValueCaseInsensitive(requestedStyle, "synthIconHeight"), {
+    min: 16,
+    max: MAX_ICON_BOUNDS.height,
   });
 
-  if (!width && !height && !scale) return null;
+  let bounds;
+  if (width || height) {
+    bounds = {
+      width: width || MAX_ICON_BOUNDS.width,
+      height: height || MAX_ICON_BOUNDS.height,
+    };
+  } else if (explicitScale) {
+    bounds = {
+      width: Math.min(
+        MAX_ICON_BOUNDS.width,
+        ICON_SIZE_PRESETS.medium.width * explicitScale,
+      ),
+      height: Math.min(
+        MAX_ICON_BOUNDS.height,
+        ICON_SIZE_PRESETS.medium.height * explicitScale,
+      ),
+    };
+  } else if (presetBounds) {
+    bounds = presetBounds;
+  } else {
+    return null;
+  }
 
-  if (!width && !height) {
-    width = baseWidth * scale;
-    height = baseHeight * scale;
-  } else if (width && !height) {
-    height = width / aspect;
-  } else if (!width && height) {
-    width = height * aspect;
+  let fittedWidth = bounds.width;
+  let fittedHeight = fittedWidth / aspect;
+  if (fittedHeight > bounds.height) {
+    fittedHeight = bounds.height;
+    fittedWidth = fittedHeight * aspect;
   }
 
   return {
-    width: Math.round(boundedNumber(width, { min: 24, max: 360 })),
-    height: Math.round(boundedNumber(height, { min: 24, max: 280 })),
+    width: Math.max(4, Math.round(fittedWidth)),
+    height: Math.max(4, Math.round(fittedHeight)),
   };
+}
+
+function geometryNumber(attrs, name) {
+  const value = attrValue(attrs, name);
+  if (value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function formatGeometryNumber(value) {
+  return String(Math.round(value * 10) / 10);
 }
 
 function applyGeometrySize(cellXml, size) {
   if (!size) return cellXml;
   const withGeometry = String(cellXml).replace(/<mxGeometry\b[^>]*\/?>/i, (tag) => {
+    const attrs = parseAttributes(tag);
+    const originalWidth = geometryNumber(attrs, "width");
+    const originalHeight = geometryNumber(attrs, "height");
+    const originalX = geometryNumber(attrs, "x");
+    const originalY = geometryNumber(attrs, "y");
     let nextTag = replaceAttribute(tag, "width", size.width);
     nextTag = replaceAttribute(nextTag, "height", size.height);
+
+    if (
+      attrValue(attrs, "relative") !== "1" &&
+      originalWidth !== null &&
+      originalHeight !== null &&
+      originalX !== null &&
+      originalY !== null
+    ) {
+      const centerX = originalX + originalWidth / 2;
+      const centerY = originalY + originalHeight / 2;
+      const nextX = Math.max(0, centerX - size.width / 2);
+      const nextY = Math.max(0, centerY - size.height / 2);
+      nextTag = replaceAttribute(nextTag, "x", formatGeometryNumber(nextX));
+      nextTag = replaceAttribute(nextTag, "y", formatGeometryNumber(nextY));
+    }
     return nextTag;
   });
   if (withGeometry !== cellXml) return withGeometry;

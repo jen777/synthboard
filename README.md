@@ -123,11 +123,14 @@ rectangles, process shapes, cylinders, diamonds, document shapes, clouds,
 actors, hexagons, swimlanes, groups, and simple connectors.
 
 Admins can upload libraries from **Admin panel → Icon libraries**. The screen
-shows each indexed library, object counts, and object names. Uploads accept
-draw.io library XML files up to 10 MiB. The Node JSON body parser and bundled
-nginx config both allow 20 MiB request bodies to leave room for JSON escaping
-around the XML payload; any external proxy in front of the app must allow at
-least that much request body size.
+shows each indexed library, object counts, object names, and a fitted visual
+preview inside every object card. Preview XML is fetched lazily for visible
+cards and rendered with the draw.io viewer so image-backed objects and draw.io
+stencil styles use the same source data as generation. Uploads accept draw.io
+library XML files up to 10 MiB. The Node JSON body parser and bundled nginx
+config both allow 20 MiB request bodies to leave room for JSON escaping around
+the XML payload; any external proxy in front of the app must allow at least that
+much request body size.
 
 For scripted ingestion:
 
@@ -150,14 +153,14 @@ empty or temporarily unavailable, generation still proceeds with those fallback
 shapes.
 
 When the diagram call supplies an explicit icon placeholder, the server replaces
-`synthIcon=<icon id>` with the exact draw.io image/object style. The LLM can also
-request size changes with
-`synthIconSize=small|medium|large|hero`, `synthIconScale=0.5-2.5`, or explicit
-`synthIconWidth=<px>` and `synthIconHeight=<px>` style keys. Width-only and
-height-only requests preserve the object's native aspect ratio. When an icon is
-selected without a size request, the post-processor applies the object's native
-medium geometry so the library visual is not stretched into a generic
-model-generated rectangle.
+`synthIcon=<icon id>` with the exact draw.io image/object style. Normal generation
+uses `synthIconSize=small|medium|large|hero`; these are compact absolute bounding
+boxes rather than multipliers of the library object's native dimensions. The
+post-processor always preserves native aspect ratio and recenters the resized
+visual on the original vertex geometry, so replacement does not shift the node
+or disturb connector alignment. Legacy `synthIconScale`, `synthIconWidth`, and
+`synthIconHeight` controls remain accepted but are constrained to a 96x72 safety
+box. Icons without a size request use the compact medium preset.
 The style parser tolerates model output with whitespace or casing variations
 around these keys, such as `synthIcon = azure.database` or `synthicon=...`.
 Replaced icons receive readable label defaults (wrapped HTML labels below the
@@ -251,6 +254,7 @@ low styled-node coverage, low color variety, or low shape variety.
 
 Admins can also use the API directly: `GET /api/admin/icon-libraries`,
 `GET /api/admin/icon-libraries/:id/objects`,
+`GET /api/admin/icon-libraries/:id/objects/:objectId/preview`,
 `POST /api/admin/icon-libraries`, `DELETE /api/admin/icon-libraries/:id`, and
 `GET /api/admin/icon-libraries/search?q=azure storage`.
 

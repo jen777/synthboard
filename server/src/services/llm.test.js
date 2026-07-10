@@ -56,6 +56,8 @@ test("generation prompt includes plan-driven visual design requirements", () => 
   assert.match(prompt, /Approved diagram plan from step 1:/);
   assert.match(prompt, /"fallbackShape": "process"/);
   assert.match(prompt, /synthIconSize/);
+  assert.match(prompt, /Do not emit synthIconWidth, synthIconHeight, or synthIconScale/);
+  assert.match(prompt, /keeps its center fixed/);
   assert.match(prompt, /Return only the draw\.io <mxfile> XML\./);
 });
 
@@ -442,7 +444,10 @@ test("local post-processing pipeline defaults to shape-rich styled XML", async (
   assert.equal(result.iconMeta.autoEligible, 2);
   assert.equal(result.iconMeta.autoTarget, 0);
   assert.equal(result.iconMeta.autoCandidateCount, 2);
-  assert.match(result.xml, /id="api"[\s\S]*?width="109" height="109"/);
+  assert.match(
+    result.xml,
+    /id="api"[\s\S]*?x="72" y="17" width="56" height="56"/,
+  );
   assert.match(result.xml, /id="db"[^>]*shape=cylinder/);
   assert.match(result.xml, /id="decision"[^>]*shape=rhombus/);
   assert.equal(summary.vertexCount, 3);

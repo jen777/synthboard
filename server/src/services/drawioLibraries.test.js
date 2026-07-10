@@ -12,6 +12,7 @@ const {
   applyIconRowsToXml,
   autoIconTargetForXml,
   buildIconPrompt,
+  buildIconPreviewXml,
   buildIconQueryTerms,
   buildIconSearchText,
   buildIconTsQuery,
@@ -118,13 +119,44 @@ test("extracts the best visual vertex from multi-cell drawio library objects", (
   );
 });
 
-test("replaces synthIcon placeholders, strips synthIcon keys, and preserves telemetry", () => {
+test("builds a viewer-ready preview from stored library object XML", () => {
+  const graphModel = `<mxGraphModel><root><mxCell id="0" /><mxCell id="1" parent="0" /><mxCell id="icon" style="shape=mxgraph.azure.app_service;" vertex="1" parent="1"><mxGeometry width="80" height="80" as="geometry" /></mxCell></root></mxGraphModel>`;
+
+  const preview = buildIconPreviewXml({
+    id: "azure.app-service",
+    title: "App Service",
+    cellXml: graphModel,
+  });
+
+  assert.match(preview, /^<mxfile host="synthboard">/);
+  assert.match(preview, /<diagram id="preview" name="Preview">/);
+  assert.match(preview, /shape=mxgraph\.azure\.app_service/);
+  assert.match(preview, /<\/mxfile>$/);
+});
+
+test("builds a safe preview model from an image style fallback", () => {
+  const preview = buildIconPreviewXml({
+    id: 'logos.example"cloud',
+    title: "Example & Cloud",
+    width: 400,
+    height: 300,
+    style: "shape=image;image=data:image/png;base64,abc;aspect=fixed;",
+  });
+
+  assert.match(preview, /id="logos\.example&quot;cloud"/);
+  assert.match(preview, /value="Example &amp; Cloud"/);
+  assert.match(preview, /width="320" height="240"/);
+  assert.match(preview, /shape=image;image=data:image\/png;base64,abc;aspect=fixed;/);
+  assert.equal(buildIconPreviewXml({ id: "empty" }), null);
+});
+
+test("bounds explicit icon sizes, recenters geometry, and preserves telemetry", () => {
   const xml = `<mxCell id="n1" value="Database" style="rounded=1;synthIcon=lib.database;synthIconWidth=140;fillColor=#fff;strokeColor=#000;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="80" height="40" as="geometry" /></mxCell><mxCell id="n2" value="Missing" style="synthIcon=missing.icon;synthIconSize=hero;fillColor=#fff;" vertex="1" parent="1"><mxGeometry x="180" y="20" width="80" height="40" as="geometry" /></mxCell>`;
 
   const result = applyIconRowsToXml(xml, [ICON_ROWS[0]]);
 
   assert.match(result.xml, /shape=image/);
-  assert.match(result.xml, /width="140" height="100"/);
+  assert.match(result.xml, /x="12" y="5\.5" width="96" height="69"/);
   assert.match(result.xml, /fontSize=12/);
   assert.match(result.xml, /fontColor=#0f172a/);
   assert.match(result.xml, /spacingTop=6/);
@@ -142,7 +174,7 @@ test("accepts spaced and mixed-case synthIcon style entries from model output", 
 
   assert.deepEqual(explicitIconIdsFromXml(xml), ["lib.database"]);
   assert.match(result.xml, /shape=image/);
-  assert.match(result.xml, /width="119" height="85"/);
+  assert.match(result.xml, /x="26" y="15\.5" width="68" height="49"/);
   assert.doesNotMatch(result.xml, /synthicon/i);
   assert.deepEqual(result.applied, [{ id: "lib.database", title: "Database" }]);
 });
@@ -156,7 +188,7 @@ test("handles single-quoted XML attributes without duplicating rewritten attribu
   assert.deepEqual(explicitIconIdsFromXml(xml), ["lib.database"]);
   assert.deepEqual(result.applied, [{ id: "lib.database", title: "Database" }]);
   assert.match(cell, /style="[^"]*shape=image/);
-  assert.match(cell, /width="140" height="100"/);
+  assert.match(cell, /x="12" y="5\.5" width="96" height="69"/);
   assert.doesNotMatch(cell, /\sstyle='/);
   assert.doesNotMatch(cell, /\swidth='80'/);
   assert.doesNotMatch(cell, /\sheight='40'/);
@@ -171,7 +203,7 @@ test("handles mixed-case XML attribute names in icon placeholders and geometry",
   assert.deepEqual(explicitIconIdsFromXml(xml), ["lib.database"]);
   assert.deepEqual(result.applied, [{ id: "lib.database", title: "Database" }]);
   assert.match(cell, /style="[^"]*shape=image/);
-  assert.match(cell, /width="140" height="100"/);
+  assert.match(cell, /x="12" y="5\.5" width="96" height="69"/);
   assert.doesNotMatch(cell, /\sStyle=/);
   assert.doesNotMatch(cell, /\sWidth='80'/);
   assert.doesNotMatch(cell, /\sHeight='40'/);
@@ -269,16 +301,35 @@ test("explicit synthIcon placeholders are not counted as auto-eligible", () => {
   assert.equal(result.autoSkipped.explicit_placeholder, 1);
 });
 
-test("uses native medium geometry for explicit icons without size requests", () => {
+test("uses compact centered medium geometry for icons without size requests", () => {
   const xml = `<mxCell id="n1" value="Database" style="rounded=1;synthIcon=lib.database;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="180" height="40" as="geometry" /></mxCell>`;
 
   const result = applyIconRowsToXml(xml, [ICON_ROWS[0]]);
 
   assert.match(result.xml, /shape=image/);
-  assert.match(result.xml, /width="70" height="50"/);
+  assert.match(result.xml, /x="90" y="25\.5" width="40" height="29"/);
   assert.doesNotMatch(result.xml, /width="180" height="40"/);
   assert.deepEqual(result.applied, [{ id: "lib.database", title: "Database" }]);
   assert.deepEqual(result.autoApplied, []);
+});
+
+test("fits wide logos inside compact bounds without moving their center", () => {
+  const xml = `<mxCell id="logo" value="Example Cloud" style="synthIcon=logos.example;synthIconSize=hero;" vertex="1" parent="1"><mxGeometry x="100" y="80" width="160" height="70" as="geometry" /></mxCell>`;
+  const rows = [
+    {
+      id: "logos.example",
+      title: "Example Cloud",
+      search_text: "example cloud logo",
+      style: "shape=image;image=data:image/png;base64,logo;aspect=fixed;",
+      width: 400,
+      height: 100,
+    },
+  ];
+
+  const result = applyIconRowsToXml(xml, rows);
+
+  assert.match(result.xml, /x="146" y="106\.5" width="68" height="17"/);
+  assert.doesNotMatch(result.xml, /width="400"|height="100"/);
 });
 
 test("strips synthIcon keys from non-vertex cells without applying image styles", () => {
@@ -299,7 +350,7 @@ test("supports height-only icon sizing while preserving aspect ratio", () => {
 
   const result = applyIconRowsToXml(xml, ICON_ROWS);
 
-  assert.match(result.xml, /width="125" height="100"/);
+  assert.match(result.xml, /x="15" y="4" width="90" height="72"/);
   assert.doesNotMatch(result.xml, /synthIconHeight/);
 });
 
@@ -311,12 +362,18 @@ test("supports icon size presets and explicit scale controls", () => {
 
   const result = applyIconRowsToXml(xml, ICON_ROWS);
 
-  assert.match(result.xml, /id="hero"[\s\S]*?width="119" height="85"/);
-  assert.match(result.xml, /id="scaled"[\s\S]*?width="100" height="80"/);
+  assert.match(
+    result.xml,
+    /id="hero"[\s\S]*?x="26" y="15\.5" width="68" height="49"/,
+  );
+  assert.match(
+    result.xml,
+    /id="scaled"[\s\S]*?x="180" y="8" width="80" height="64"/,
+  );
   assert.doesNotMatch(result.xml, /synthIconSize|synthIconScale/);
 });
 
-test("auto-applies candidate icons to matching vertex labels with native sizing", () => {
+test("auto-applies candidate icons with compact centered sizing", () => {
   const xml = `<mxCell id="n1" value="Database" style="rounded=1;fillColor=#fff;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="80" height="40" as="geometry" /></mxCell><mxCell id="n2" value="Worker service" style="rounded=1;" vertex="1" parent="1"><mxGeometry x="180" y="20" width="80" height="40" as="geometry" /></mxCell>`;
 
   const result = applyIconRowsToXml(xml, ICON_ROWS, {
@@ -329,8 +386,8 @@ test("auto-applies candidate icons to matching vertex labels with native sizing"
   assert.equal(result.autoEligible, 2);
   assert.equal(result.autoTarget, 6);
   assert.equal(result.autoCandidateCount, 2);
-  assert.match(result.xml, /width="70" height="50"/);
-  assert.match(result.xml, /width="50" height="40"/);
+  assert.match(result.xml, /x="40" y="25\.5" width="40" height="29"/);
+  assert.match(result.xml, /x="200" y="24" width="40" height="32"/);
   assert.doesNotMatch(result.xml, /fillColor=#fff/);
 });
 
@@ -850,7 +907,7 @@ test("icon prompt requires exact matches and native-aspect sizing", () => {
   assert.match(prompt, /synthIcon=<object id>/);
   assert.match(prompt, /exact library style/);
   assert.match(prompt, /synthIconSize=small\|medium\|large\|hero/);
-  assert.match(prompt, /preserves its aspect ratio/);
+  assert.match(prompt, /preserves its native aspect ratio/);
   assert.match(prompt, /azure\.storage: Blob Storage .*matches bucket\/file\/document/);
 });
 
@@ -897,6 +954,8 @@ test("planned icon prompt keeps catalog candidates grouped by object", () => {
   assert.match(prompt, /logos\.react: React/);
   assert.match(prompt, /native 96x86/);
   assert.match(prompt, /synthIconSize=<planned size>/);
+  assert.match(prompt, /Do not add synthIconWidth, synthIconHeight, or synthIconScale/);
+  assert.match(prompt, /recenters it on the original vertex geometry/);
   assert.doesNotMatch(prompt, /approval — Approval decision/);
   assert.doesNotMatch(prompt, /misc\.check/);
 });

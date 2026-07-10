@@ -10,6 +10,7 @@ import {
 import { LEVELS, isValidLevel } from "../services/levels.js";
 import {
   deleteIconLibrary,
+  getIconObjectPreview,
   ingestDrawioLibrary,
   listIconLibraries,
   listIconObjects,
@@ -325,6 +326,19 @@ router.get("/icon-libraries/:id/objects", async (req, res, next) => {
     next(err);
   }
 });
+
+router.get(
+  "/icon-libraries/:id/objects/:objectId/preview",
+  async (req, res, next) => {
+    try {
+      const preview = await getIconObjectPreview(req.params.id, req.params.objectId);
+      if (!preview) return res.status(404).json({ error: "Object not found" });
+      res.json(preview);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 router.delete("/icon-libraries/:id", async (req, res, next) => {
   try {

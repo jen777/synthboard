@@ -134,8 +134,8 @@ if (summary.iconAutoSkipped.explicit_placeholder !== 1) {
   failures.push("expected explicit synthIcon placeholder to be excluded from auto eligibility");
 }
 if (summary.visualDefaultsApplied < 1) failures.push("expected visual defaults");
-if (!result.xml.includes('width="109" height="109"')) {
-  failures.push("expected hero icon sizing");
+if (!result.xml.includes('x="92" y="37" width="56" height="56"')) {
+  failures.push("expected compact centered hero icon sizing");
 }
 if (!result.xml.includes("shape=rhombus")) {
   failures.push("expected inferred decision shape");

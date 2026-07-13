@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { DIAGRAM_STYLE_LINKS } from "./diagramUseCases.js";
+
+const COOKIE_CONSENT_KEY = "synthboard-cookie-consent";
 
 const USE_CASES = [
   {
@@ -277,6 +280,64 @@ export function LandingFooter({ children }) {
   );
 }
 
+function CookieConsent() {
+  const [isVisible, setIsVisible] = useState(() => {
+    try {
+      return !window.localStorage.getItem(COOKIE_CONSENT_KEY);
+    } catch {
+      return true;
+    }
+  });
+
+  const saveConsent = (preference) => {
+    try {
+      window.localStorage.setItem(COOKIE_CONSENT_KEY, preference);
+    } catch {
+      // The choice still dismisses the popup when storage is unavailable.
+    }
+    setIsVisible(false);
+  };
+
+  if (!isVisible) return null;
+
+  return (
+    <aside
+      className="cookie-consent"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="cookie-consent-title"
+      aria-describedby="cookie-consent-description"
+    >
+      <div className="cookie-consent-copy">
+        <span className="cookie-consent-icon" aria-hidden="true">🍪</span>
+        <div>
+          <h2 id="cookie-consent-title">Cookies on SynthBoard</h2>
+          <p id="cookie-consent-description">
+            We use necessary cookies to keep sign-in working. With your permission,
+            we may also use cookies to understand and improve the website.
+          </p>
+        </div>
+      </div>
+      <div className="cookie-consent-actions">
+        <button
+          className="cookie-consent-secondary"
+          type="button"
+          onClick={() => saveConsent("necessary")}
+        >
+          Necessary only
+        </button>
+        <button
+          className="cookie-consent-allow"
+          type="button"
+          onClick={() => saveConsent("accepted")}
+        >
+          Allow cookies
+        </button>
+      </div>
+    </aside>
+  );
+}
+
 export default function Login() {
   const params = new URLSearchParams(window.location.search);
   const error = params.get("error");
@@ -434,6 +495,7 @@ export default function Login() {
       <LandingFooter>
         Notes in, editable draw.io diagram visualizations out.
       </LandingFooter>
+      <CookieConsent />
     </main>
   );
 }

@@ -1106,6 +1106,69 @@ button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--da
   color: var(--accent);
 }
 
+.cookie-consent {
+  position: fixed; z-index: 1000;
+  right: clamp(16px, 3vw, 32px); bottom: clamp(16px, 3vw, 28px);
+  width: min(560px, calc(100vw - 32px));
+  display: flex; align-items: center; gap: 22px;
+  padding: 18px;
+  border: 1px solid rgba(215, 220, 234, 0.96);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 22px 60px rgba(30, 41, 59, 0.24);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.cookie-consent-copy {
+  min-width: 0; flex: 1;
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.cookie-consent-icon {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  background: rgba(109, 94, 252, 0.1);
+  font-size: 20px;
+}
+.cookie-consent h2 {
+  margin: 0 0 5px;
+  font-size: 17px; line-height: 1.25;
+}
+.cookie-consent p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px; line-height: 1.45;
+}
+.cookie-consent-actions {
+  display: flex; flex: 0 0 auto; flex-direction: column-reverse; gap: 8px;
+}
+.cookie-consent-actions button {
+  min-height: 38px; padding: 8px 13px;
+  border-radius: 8px;
+  font: inherit; font-size: 13px; font-weight: 800;
+  cursor: pointer;
+}
+.cookie-consent-secondary {
+  border: 1px solid var(--border-strong);
+  color: #475569;
+  background: #fff;
+}
+.cookie-consent-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.cookie-consent-allow {
+  border: 0;
+  color: #fff;
+  background: var(--grad-accent);
+  box-shadow: 0 8px 20px rgba(109, 94, 252, 0.28);
+}
+.cookie-consent-allow:hover { filter: brightness(1.05); }
+.cookie-consent-actions button:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+
 .faq-page .landing-lead {
   max-width: 690px;
 }
@@ -1275,6 +1338,15 @@ button.danger:hover:not(:disabled) { background: #fef2f2; border-color: var(--da
   .landing-final { margin: 22px 0 16px; padding: 18px; }
   .landing-start { width: 100%; white-space: normal; text-align: center; }
   .landing-actions { width: 100%; }
+  .cookie-consent {
+    left: 12px; right: 12px; bottom: 12px;
+    width: auto;
+    align-items: stretch; flex-direction: column; gap: 14px;
+    padding: 16px;
+  }
+  .cookie-consent-actions {
+    display: grid; grid-template-columns: 1fr 1fr;
+  }
   .dashboard-stats { min-width: 0; width: 100%; }
   .dashboard-actions,
   .dashboard-actions .primary,

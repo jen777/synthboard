@@ -1,3 +1,5 @@
+import { DIAGRAM_STYLE_LINKS } from "./diagramUseCases.js";
+
 const USE_CASES = [
   {
     key: "transcripts",
@@ -21,16 +23,18 @@ const USE_CASES = [
   },
 ];
 
-const FORMATS = [
+export const FORMATS = [
   {
     key: "flow",
     label: "Flow diagram",
     description: "Steps, decisions, and branches from a process.",
+    href: DIAGRAM_STYLE_LINKS.flow,
   },
   {
     key: "sequence",
     label: "UML sequence",
     description: "Actors and systems exchanging messages over time.",
+    href: DIAGRAM_STYLE_LINKS.sequence,
   },
   {
     key: "architecture",
@@ -41,26 +45,31 @@ const FORMATS = [
     key: "mindmap",
     label: "Mind map",
     description: "A central concept expanded into related ideas.",
+    href: DIAGRAM_STYLE_LINKS.mindmap,
   },
   {
     key: "er",
-    label: "Entity relationship",
+    label: "ER diagram",
     description: "Data entities, fields, and relationships.",
+    href: DIAGRAM_STYLE_LINKS.er,
   },
   {
     key: "swimlane",
-    label: "Swimlane",
+    label: "Swimlane diagram",
     description: "A workflow split by teams, roles, or departments.",
+    href: DIAGRAM_STYLE_LINKS.swimlane,
   },
   {
     key: "timeline",
-    label: "Timeline",
+    label: "Timeline diagram",
     description: "Events, phases, and milestones in order.",
+    href: DIAGRAM_STYLE_LINKS.timeline,
   },
   {
     key: "org",
     label: "Org chart",
     description: "Hierarchies of people, roles, teams, or ownership.",
+    href: DIAGRAM_STYLE_LINKS.org,
   },
 ];
 
@@ -85,7 +94,7 @@ const EXAMPLES = [
   },
 ];
 
-function DiagramThumb({ type }) {
+export function DiagramThumb({ type }) {
   const common = (
     <>
       <rect className="thumb-bg" x="0" y="0" width="180" height="120" rx="18" />
@@ -198,7 +207,7 @@ function DiagramThumb({ type }) {
   );
 }
 
-function ExampleVisual({ type }) {
+export function ExampleVisual({ type }) {
   return (
     <div className={`example-visual ${type}`} aria-hidden="true">
       <div className="source-lines">
@@ -220,7 +229,7 @@ function ExampleVisual({ type }) {
   );
 }
 
-function InputGraphic({ type }) {
+export function InputGraphic({ type }) {
   return (
     <div className={`input-graphic ${type}`} aria-hidden="true">
       <div className="input-doc">
@@ -243,7 +252,7 @@ function InputGraphic({ type }) {
   );
 }
 
-function StartButton({ compact = false }) {
+export function StartButton({ compact = false }) {
   return (
     <a className="landing-start" href="/auth/google">
       <span className="google-mark" aria-hidden="true">
@@ -251,6 +260,20 @@ function StartButton({ compact = false }) {
       </span>
       {compact ? "Start with Google" : "Start using SynthBoard with Google"}
     </a>
+  );
+}
+
+export function LandingFooter({ children }) {
+  return (
+    <footer className="landing-footer muted">
+      <span className="brand">
+        Synth<span className="dot">Board</span>
+      </span>
+      <span>{children}</span>
+      <nav className="landing-footer-links" aria-label="Footer">
+        <a href="/faq">FAQ</a>
+      </nav>
+    </footer>
   );
 }
 
@@ -355,11 +378,24 @@ export default function Login() {
           aria-label="Supported diagram and visualization styles"
         >
           {FORMATS.map((format) => (
-            <article className="format-card" key={format.key}>
-              <DiagramThumb type={format.key} />
-              <h3>{format.label}</h3>
-              <p>{format.description}</p>
-            </article>
+            format.href ? (
+              <a
+                className="format-card format-link-card"
+                href={format.href}
+                key={format.key}
+              >
+                <DiagramThumb type={format.key} />
+                <h3>{format.label}</h3>
+                <p>{format.description}</p>
+                <span className="format-card-link">View use case</span>
+              </a>
+            ) : (
+              <article className="format-card" key={format.key}>
+                <DiagramThumb type={format.key} />
+                <h3>{format.label}</h3>
+                <p>{format.description}</p>
+              </article>
+            )
           ))}
         </div>
       </section>
@@ -395,12 +431,9 @@ export default function Login() {
       </section>
       </div>
 
-      <footer className="landing-footer muted">
-        <span className="brand">
-          Synth<span className="dot">Board</span>
-        </span>
-        <span>Notes in, editable draw.io diagram visualizations out.</span>
-      </footer>
+      <LandingFooter>
+        Notes in, editable draw.io diagram visualizations out.
+      </LandingFooter>
     </main>
   );
 }

@@ -2,11 +2,16 @@ import { createContext, useContext, useEffect, useState, useCallback } from "rea
 import { Routes, Route, Navigate } from "react-router-dom";
 import { api } from "./api.js";
 import Layout from "./components/Layout.jsx";
+import DiagramUseCaseLanding from "./pages/DiagramUseCaseLanding.jsx";
 import Login from "./pages/Login.jsx";
+import DrawioAlternativeLanding from "./pages/DrawioAlternativeLanding.jsx";
+import Faq from "./pages/Faq.jsx";
+import TextToDrawioLanding from "./pages/TextToDrawioLanding.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Create from "./pages/Create.jsx";
 import Viewer from "./pages/Viewer.jsx";
 import Admin from "./pages/Admin.jsx";
+import { DIAGRAM_USE_CASES } from "./pages/diagramUseCases.js";
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -44,6 +49,16 @@ export default function App() {
     <AuthContext.Provider value={{ user, quota, setQuota, refresh }}>
       {!user ? (
         <Routes>
+          <Route path="/drawio-alternative" element={<DrawioAlternativeLanding />} />
+          <Route path="/faq" element={<Faq />} />
+          <Route path="/text-to-drawio-diagram" element={<TextToDrawioLanding />} />
+          {DIAGRAM_USE_CASES.map((page) => (
+            <Route
+              element={<DiagramUseCaseLanding slug={page.slug} />}
+              key={page.slug}
+              path={page.path}
+            />
+          ))}
           <Route path="*" element={<Login />} />
         </Routes>
       ) : (

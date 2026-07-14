@@ -89,7 +89,7 @@ const VISUAL_DESIGN_GUIDANCE = `Visual design requirements:
 - Use diagram-appropriate standard draw.io shapes and basic objects: rounded/process rectangles for work or services, cylinders for data stores, diamonds for decisions, document shapes for files, clouds for networks, actor shapes for users, hexagons for queues/events, swimlanes for responsibility, and containers/boundaries for groups.
 - Make hierarchy obvious with larger primary nodes, smaller supporting nodes, section headers, whitespace, and aligned rows/columns. Avoid overlapping text, shapes, or connectors.
 - Use one coherent visual language for the whole diagram. Objects with the same semantic role must use the same shape family, corner treatment, stroke weight, typography, and size tier. Use color to encode groups, branches, or object types deliberately; never cycle colors arbitrarily.
-- Use a 10px geometry grid, 60px outer margins, at least 70px between sibling objects, and at least 90px between connected layers. Keep parallel rows and columns precisely aligned. Size shapes for their labels with comfortable internal padding and no clipped text.
+- Use a 10px geometry grid, 60px outer margins, at least 70px between sibling objects, and at least 120px between connected layers. Keep parallel rows and columns precisely aligned. Size shapes for their labels with comfortable internal padding and no clipped text.
 - Keep primary flow visually dominant. Use orthogonal connectors for structured diagrams, route them through whitespace, minimize crossings, and keep edge labels off node boundaries. Containers must fully enclose their children with at least 30px side/bottom padding and a clear header band.
 - Do not use custom image icons, pasted image data, or third-party stencil libraries unless an explicit icon context is provided. When in doubt, use a standard shape with a clear label.`;
 const PLANNING_SYSTEM = `You are the planning stage of SynthBoard's two-step draw.io generator.
@@ -98,7 +98,7 @@ Analyze the user's source material and return a concise JSON plan for a second m
 
 The plan must identify every meaningful diagram object, its visual treatment, appropriate size, exact page position, and the supported relationships between objects. Choose "logo" for an explicitly named brand/product, "icon" or "image" for a concrete recognizable object, and "shape" for abstract concepts, steps, decisions, groups, or anything that should use a standard draw.io shape. Default icons and logos to "medium"; use "small" for supporting visuals, "large" only for a primary object, and "hero" only for a single central visual when essential. Never use large/hero for ordinary services or repeated objects. Never invent facts or products.
 
-Treat layout as a first-class design task. Use absolute page coordinates on a 10px grid. Leave a 60px outer margin, at least 70px between sibling objects, and at least 90px between connected layers. Align related objects into clean rows or columns, reserve whitespace for connectors, and avoid crossings. Choose dimensions from a small consistent set of size tiers, then increase a shape only when its label or content needs more room. Objects with the same role and hierarchy should normally have the same dimensions. For groups/containers, position the container around its children with at least 30px side/bottom padding plus a 40px header band. Only Venn/set-overlap diagrams may intentionally overlap object bounds.
+Treat layout as a first-class design task. Use absolute page coordinates on a 10px grid. Leave a 60px outer margin, at least 70px between sibling objects, and at least 120px between connected layers. Align related objects into clean rows or columns, reserve whitespace for connectors, and avoid crossings. Use these base size tiers: small 140x60, medium 180x80, large 220x100, hero 280x130. Increase a shape only when its label or structured content needs more room. Objects with the same role and hierarchy should normally have the same dimensions. For groups/containers, position the container around its children with at least 40px side/bottom padding plus a 60px header band. Only Venn/set-overlap diagrams may intentionally overlap object bounds.
 
 Return one JSON object and nothing else with this structure:
 {
@@ -115,8 +115,8 @@ Return one JSON object and nothing else with this structure:
       "size": "small|medium|large|hero",
       "x": 60,
       "y": 60,
-      "width": 160,
-      "height": 70,
+      "width": 180,
+      "height": 80,
       "searchTerms": ["exact product or object terms"],
       "group": "optional group key"
     }
@@ -148,13 +148,16 @@ const VISUAL_PALETTE = [
 ];
 const PLAN_GRID_SIZE = 10;
 const PLAN_PAGE_MARGIN = 60;
-const PLAN_LAYER_GAP = 100;
+const PLAN_LAYER_GAP = 120;
 const PLAN_SIBLING_GAP = 70;
+const PLAN_CONTAINER_SIDE_PADDING = 40;
+const PLAN_CONTAINER_HEADER = 60;
+const PLAN_CONTAINER_BOTTOM_PADDING = 40;
 const PLAN_SIZE_TIERS = {
-  small: { width: 120, height: 50 },
-  medium: { width: 160, height: 70 },
-  large: { width: 210, height: 90 },
-  hero: { width: 270, height: 120 },
+  small: { width: 140, height: 60 },
+  medium: { width: 180, height: 80 },
+  large: { width: 220, height: 100 },
+  hero: { width: 280, height: 130 },
 };
 
 function cleanPlanText(value, maxLength = 240) {
@@ -212,9 +215,12 @@ function minimumObjectSize({ label, fallbackShape, size }) {
   } else if (shape.includes("cloud")) {
     width = Math.max(width, 170);
     height = Math.max(height, 90);
-  } else if (shape.includes("swimlane") || shape.includes("group")) {
+  } else if (shape.includes("group")) {
     width = Math.max(width, 320);
     height = Math.max(height, 180);
+  } else if (shape.includes("swimlane")) {
+    width = Math.max(width, 260);
+    height = Math.max(height, 140);
   }
 
   const visibleLabel = String(label || "")
@@ -284,6 +290,28 @@ function positionLayeredObjects(objects, connectors, direction) {
     layers.get(rank).push(object);
   }
   const orderedLayers = [...layers.entries()].sort(([a], [b]) => a - b);
+  const sourceOrder = new Map(objects.map((object, index) => [object.key, index]));
+  const incoming = new Map(objects.map((object) => [object.key, []]));
+  for (const connector of connectors) {
+    if (incoming.has(connector.to)) incoming.get(connector.to).push(connector.from);
+  }
+  const crossOrder = new Map();
+  for (const [, layer] of orderedLayers) {
+    layer.sort((a, b) => {
+      const barycenter = (object) => {
+        const positions = (incoming.get(object.key) || [])
+          .map((key) => crossOrder.get(key))
+          .filter(Number.isFinite);
+        if (positions.length === 0) return Number.POSITIVE_INFINITY;
+        return positions.reduce((sum, value) => sum + value, 0) / positions.length;
+      };
+      const aCenter = barycenter(a);
+      const bCenter = barycenter(b);
+      if (aCenter !== bCenter) return aCenter - bCenter;
+      return sourceOrder.get(a.key) - sourceOrder.get(b.key);
+    });
+    layer.forEach((object, index) => crossOrder.set(object.key, index));
+  }
   const isHorizontal = direction === "left-to-right";
   const layerCrossTotals = new Map(
     orderedLayers.map(([rank, layer]) => [
@@ -359,7 +387,23 @@ function positionRadialObjects(objects, connectors) {
     (a, b) => degree.get(b.key) - degree.get(a.key),
   )[0];
   const satellites = objects.filter((object) => object !== center);
-  const radius = Math.max(230, satellites.length * 48);
+  const maxSatelliteWidth = Math.max(0, ...satellites.map((object) => object.width));
+  const maxSatelliteHeight = Math.max(
+    0,
+    ...satellites.map((object) => object.height),
+  );
+  const centerRadius = Math.max(center.width, center.height) / 2;
+  const satelliteRadius = Math.max(maxSatelliteWidth, maxSatelliteHeight) / 2;
+  const chordRadius =
+    satellites.length > 1
+      ? (Math.max(maxSatelliteWidth, maxSatelliteHeight) + PLAN_SIBLING_GAP) /
+        (2 * Math.sin(Math.PI / satellites.length))
+      : 0;
+  const radius = Math.max(
+    260,
+    centerRadius + satelliteRadius + PLAN_SIBLING_GAP + PLAN_GRID_SIZE,
+    chordRadius,
+  );
   const centerX = PLAN_PAGE_MARGIN + radius + 160;
   const centerY = PLAN_PAGE_MARGIN + radius + 120;
   center.x = centerX - center.width / 2;
@@ -371,44 +415,295 @@ function positionRadialObjects(objects, connectors) {
   });
 }
 
-function positionSwimlaneObjects(objects) {
-  const grouped = new Map();
+function isContainerObject(object, referencedGroups = new Set()) {
+  const shape = normalizedFallbackShape(object.fallbackShape);
+  return (
+    shape.includes("group") ||
+    shape.includes("swimlane") ||
+    referencedGroups.has(object.key)
+  );
+}
+
+function harmonizeObjectSizes(objects, preset) {
+  if (["venn", "infographic"].includes(preset)) return;
+  const referencedGroups = new Set(objects.map((object) => object.group).filter(Boolean));
+  const families = new Map();
   for (const object of objects) {
-    const group = object.group || "unassigned";
-    if (!grouped.has(group)) grouped.set(group, []);
-    grouped.get(group).push(object);
+    if (isContainerObject(object, referencedGroups)) continue;
+    const family = `${object.size || "medium"}:${normalizedFallbackShape(
+      object.fallbackShape,
+    )}`;
+    if (!families.has(family)) families.set(family, []);
+    families.get(family).push(object);
   }
-  let y = PLAN_PAGE_MARGIN;
-  for (const lane of grouped.values()) {
-    let x = PLAN_PAGE_MARGIN;
-    const laneHeight = Math.max(...lane.map((object) => object.height));
-    for (const object of lane) {
-      object.x = x;
-      object.y = y + Math.round((laneHeight - object.height) / 2);
-      x += object.width + PLAN_LAYER_GAP;
+  for (const family of families.values()) {
+    const width = Math.max(...family.map((object) => object.width));
+    const height = Math.max(...family.map((object) => object.height));
+    for (const object of family) {
+      object.width = width;
+      object.height = height;
     }
-    y += laneHeight + PLAN_SIBLING_GAP + 40;
   }
 }
 
-function countObjectOverlaps(objects) {
+function positionHorizontalObjects(objects) {
+  if (objects.length === 0) return;
+  const maxHeight = Math.max(...objects.map((object) => object.height));
+  let x = PLAN_PAGE_MARGIN;
+  for (const object of objects) {
+    object.x = x;
+    object.y = PLAN_PAGE_MARGIN + Math.round((maxHeight - object.height) / 2);
+    x += object.width + PLAN_LAYER_GAP;
+  }
+}
+
+function positionVerticalObjects(objects) {
+  if (objects.length === 0) return;
+  const maxWidth = Math.max(...objects.map((object) => object.width));
+  let y = PLAN_PAGE_MARGIN;
+  for (const object of objects) {
+    object.x = PLAN_PAGE_MARGIN + Math.round((maxWidth - object.width) / 2);
+    object.y = y;
+    y += object.height + PLAN_SIBLING_GAP;
+  }
+}
+
+function positionTimelineObjects(objects) {
+  if (objects.length === 0) return;
+  const maxHeight = Math.max(...objects.map((object) => object.height));
+  let x = PLAN_PAGE_MARGIN;
+  objects.forEach((object) => {
+    object.x = x;
+    object.y = PLAN_PAGE_MARGIN + Math.round((maxHeight - object.height) / 2);
+    x += object.width + PLAN_LAYER_GAP;
+  });
+}
+
+function positionFishboneObjects(objects) {
+  if (objects.length === 0) return;
+  const effect = objects[objects.length - 1];
+  const causes = objects.slice(0, -1);
+  const baseline = PLAN_PAGE_MARGIN + 260;
+  let x = PLAN_PAGE_MARGIN;
+  causes.forEach((object, index) => {
+    object.x = x;
+    object.y =
+      index % 2 === 0
+        ? baseline - object.height - 100
+        : baseline + 100;
+    x += object.width + 80;
+  });
+  effect.x = Math.max(x + PLAN_LAYER_GAP, PLAN_PAGE_MARGIN + 520);
+  effect.y = baseline - effect.height / 2;
+}
+
+function layoutFallbackObjects(objects, connectors, { layout, preset }) {
+  if (preset === "sequence") positionHorizontalObjects(objects);
+  else if (preset === "timeline") positionTimelineObjects(objects);
+  else if (preset === "fishbone") positionFishboneObjects(objects);
+  else if (preset === "orgchart") {
+    positionLayeredObjects(objects, connectors, "top-to-bottom");
+  } else if (preset === "mindmap" || layout === "radial") {
+    positionRadialObjects(objects, connectors);
+  } else if (
+    ["uml", "er", "infographic", "kanban"].includes(preset) ||
+    layout === "grid"
+  ) {
+    positionGridObjects(objects);
+  } else {
+    positionLayeredObjects(objects, connectors, layout);
+  }
+}
+
+function positionGroupedFallback(objects, connectors, plan) {
+  const referencedGroups = new Set(objects.map((object) => object.group).filter(Boolean));
+  const byKey = new Map(objects.map((object) => [object.key, object]));
+  const containers = objects.filter((object) =>
+    isContainerObject(object, referencedGroups),
+  );
+  const containerKeys = new Set(containers.map((object) => object.key));
+  if (containers.length === 0) {
+    layoutFallbackObjects(objects, connectors, plan);
+    return;
+  }
+
+  const depthOf = (object, seen = new Set()) => {
+    if (!object.group || !containerKeys.has(object.group)) return 0;
+    if (seen.has(object.key)) return 0;
+    seen.add(object.key);
+    return 1 + depthOf(byKey.get(object.group), seen);
+  };
+  const orderedContainers = [...containers].sort(
+    (a, b) => depthOf(b) - depthOf(a),
+  );
+
+  // Lay out each container's direct children locally before positioning the
+  // container in the outer graph. This prevents the old failure mode where a
+  // group was placed as a peer and its children landed elsewhere on the page.
+  // Deepest containers are sized first so nested group bounds are final before
+  // their parent computes its own content box.
+  for (const container of orderedContainers) {
+    const children = objects.filter((object) => object.group === container.key);
+    if (children.length === 0) continue;
+    const childKeys = new Set(children.map((object) => object.key));
+    const directChildKey = (key) => {
+      let object = byKey.get(key);
+      const seen = new Set();
+      while (object && !seen.has(object.key)) {
+        seen.add(object.key);
+        if (object.group === container.key) return object.key;
+        object = byKey.get(object.group);
+      }
+      return null;
+    };
+    const childConnectorKeys = new Set();
+    const childConnectors = connectors
+      .map((connector) => ({
+        ...connector,
+        from: directChildKey(connector.from),
+        to: directChildKey(connector.to),
+      }))
+      .filter((connector) => {
+        if (
+          !connector.from ||
+          !connector.to ||
+          connector.from === connector.to ||
+          !childKeys.has(connector.from) ||
+          !childKeys.has(connector.to)
+        ) {
+          return false;
+        }
+        const key = `${connector.from}:${connector.to}`;
+        if (childConnectorKeys.has(key)) return false;
+        childConnectorKeys.add(key);
+        return true;
+      });
+    if (plan.preset === "swimlane") {
+      positionHorizontalObjects(children);
+    } else if (plan.preset === "kanban") {
+      positionVerticalObjects(children);
+    } else {
+      layoutFallbackObjects(children, childConnectors, {
+        ...plan,
+        layout: plan.layout === "top-to-bottom" ? "top-to-bottom" : "left-to-right",
+      });
+    }
+    const minX = Math.min(...children.map((object) => object.x));
+    const minY = Math.min(...children.map((object) => object.y));
+    const maxX = Math.max(...children.map((object) => object.x + object.width));
+    const maxY = Math.max(...children.map((object) => object.y + object.height));
+    for (const child of children) {
+      child._relativeX = PLAN_CONTAINER_SIDE_PADDING + child.x - minX;
+      child._relativeY = PLAN_CONTAINER_HEADER + child.y - minY;
+    }
+    container.width = snapPlanDimension(
+      maxX - minX + PLAN_CONTAINER_SIDE_PADDING * 2,
+    );
+    container.height = snapPlanDimension(
+      maxY - minY + PLAN_CONTAINER_HEADER + PLAN_CONTAINER_BOTTOM_PADDING,
+    );
+  }
+
+  if (plan.preset === "kanban" && containers.length > 0) {
+    const width = Math.max(...containers.map((container) => container.width));
+    const height = Math.max(...containers.map((container) => container.height));
+    for (const container of containers) {
+      container.width = width;
+      container.height = height;
+    }
+  } else if (plan.preset === "swimlane" && containers.length > 0) {
+    const width = Math.max(...containers.map((container) => container.width));
+    for (const container of containers) container.width = width;
+  }
+
+  const outerObjects = objects.filter(
+    (object) => !object.group || !containerKeys.has(object.group),
+  );
+  const outerKey = (key) => {
+    let object = byKey.get(key);
+    const seen = new Set();
+    while (
+      object?.group &&
+      containerKeys.has(object.group) &&
+      !seen.has(object.key)
+    ) {
+      seen.add(object.key);
+      object = byKey.get(object.group);
+    }
+    return object?.key || key;
+  };
+  const seenOuterConnectors = new Set();
+  const outerConnectors = connectors
+    .map((connector) => ({
+      ...connector,
+      from: outerKey(connector.from),
+      to: outerKey(connector.to),
+    }))
+    .filter((connector) => {
+      if (connector.from === connector.to) return false;
+      const key = `${connector.from}:${connector.to}`;
+      if (seenOuterConnectors.has(key)) return false;
+      seenOuterConnectors.add(key);
+      return true;
+    });
+
+  if (plan.preset === "swimlane") positionVerticalObjects(outerObjects);
+  else if (plan.preset === "kanban") positionHorizontalObjects(outerObjects);
+  else layoutFallbackObjects(outerObjects, outerConnectors, plan);
+
+  const placeChildren = (container, seen = new Set()) => {
+    if (seen.has(container.key)) return;
+    seen.add(container.key);
+    for (const child of objects.filter((object) => object.group === container.key)) {
+      child.x = container.x + (child._relativeX ?? PLAN_CONTAINER_SIDE_PADDING);
+      child.y = container.y + (child._relativeY ?? PLAN_CONTAINER_HEADER);
+      delete child._relativeX;
+      delete child._relativeY;
+      if (containerKeys.has(child.key)) placeChildren(child, seen);
+    }
+  };
+  for (const container of containers) {
+    if (!container.group || !containerKeys.has(container.group)) {
+      placeChildren(container);
+    }
+  }
+}
+
+function isAncestorObject(ancestor, object, byKey, referencedGroups) {
+  const seen = new Set();
+  let parentKey = object.group;
+  while (parentKey && !seen.has(parentKey)) {
+    seen.add(parentKey);
+    const parent = byKey.get(parentKey);
+    if (!parent) return false;
+    if (
+      parent.key === ancestor.key &&
+      isContainerObject(parent, referencedGroups)
+    ) {
+      return true;
+    }
+    parentKey = parent.group;
+  }
+  return false;
+}
+
+function isContainmentPair(a, b, byKey, referencedGroups) {
+  return (
+    isAncestorObject(a, b, byKey, referencedGroups) ||
+    isAncestorObject(b, a, byKey, referencedGroups)
+  );
+}
+
+function countObjectOverlaps(objects, { allowSetOverlap = false } = {}) {
+  if (allowSetOverlap) return 0;
+  const referencedGroups = new Set(objects.map((object) => object.group).filter(Boolean));
+  const byKey = new Map(objects.map((object) => [object.key, object]));
   let overlaps = 0;
   for (let index = 0; index < objects.length; index++) {
     const a = objects[index];
     for (let otherIndex = index + 1; otherIndex < objects.length; otherIndex++) {
       const b = objects[otherIndex];
-      const aIsContainer = ["group", "swimlane"].some((shape) =>
-        normalizedFallbackShape(a.fallbackShape).includes(shape),
-      );
-      const bIsContainer = ["group", "swimlane"].some((shape) =>
-        normalizedFallbackShape(b.fallbackShape).includes(shape),
-      );
-      if (
-        (aIsContainer && b.group === a.key) ||
-        (bIsContainer && a.group === b.key)
-      ) {
-        continue;
-      }
+      if (isContainmentPair(a, b, byKey, referencedGroups)) continue;
       const intersects =
         a.x < b.x + b.width &&
         a.x + a.width > b.x &&
@@ -420,33 +715,119 @@ function countObjectOverlaps(objects) {
   return overlaps;
 }
 
+function countGapViolations(objects) {
+  const referencedGroups = new Set(objects.map((object) => object.group).filter(Boolean));
+  const byKey = new Map(objects.map((object) => [object.key, object]));
+  let violations = 0;
+  for (let index = 0; index < objects.length; index++) {
+    const a = objects[index];
+    for (let otherIndex = index + 1; otherIndex < objects.length; otherIndex++) {
+      const b = objects[otherIndex];
+      if (isContainmentPair(a, b, byKey, referencedGroups)) continue;
+      const horizontalOverlap = a.x < b.x + b.width && a.x + a.width > b.x;
+      const verticalOverlap = a.y < b.y + b.height && a.y + a.height > b.y;
+      const horizontalGap = Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width));
+      const verticalGap = Math.max(b.y - (a.y + a.height), a.y - (b.y + b.height));
+      if (verticalOverlap && horizontalGap >= 0 && horizontalGap < PLAN_SIBLING_GAP) {
+        violations++;
+      } else if (
+        horizontalOverlap &&
+        verticalGap >= 0 &&
+        verticalGap < PLAN_SIBLING_GAP
+      ) {
+        violations++;
+      }
+    }
+  }
+  return violations;
+}
+
+function countContainmentViolations(objects) {
+  const byKey = new Map(objects.map((object) => [object.key, object]));
+  let violations = 0;
+  for (const child of objects) {
+    const parent = byKey.get(child.group);
+    if (!parent) continue;
+    const contained =
+      child.x >= parent.x + PLAN_CONTAINER_SIDE_PADDING &&
+      child.y >= parent.y + PLAN_CONTAINER_HEADER &&
+      child.x + child.width <=
+        parent.x + parent.width - PLAN_CONTAINER_SIDE_PADDING &&
+      child.y + child.height <=
+        parent.y + parent.height - PLAN_CONTAINER_BOTTOM_PADDING;
+    if (!contained) violations++;
+  }
+  return violations;
+}
+
+function countDirectionViolations(objects, connectors, layout, preset) {
+  if (
+    ["mindmap", "timeline", "sequence", "venn", "fishbone", "kanban"].includes(
+      preset,
+    )
+  ) {
+    return 0;
+  }
+  const byKey = new Map(objects.map((object) => [object.key, object]));
+  let violations = 0;
+  for (const connector of connectors) {
+    const source = byKey.get(connector.from);
+    const target = byKey.get(connector.to);
+    if (!source || !target || source.group === target.group) continue;
+    const sourceX = source.x + source.width / 2;
+    const sourceY = source.y + source.height / 2;
+    const targetX = target.x + target.width / 2;
+    const targetY = target.y + target.height / 2;
+    if (layout === "top-to-bottom" && targetY - sourceY < PLAN_SIBLING_GAP) {
+      violations++;
+    } else if (layout === "left-to-right" && targetX - sourceX < PLAN_SIBLING_GAP) {
+      violations++;
+    }
+  }
+  return violations;
+}
+
 export function buildDiagramLayout(plan) {
   const objects = plan.objects.map((object) => ({ ...object }));
   const connectors = Array.isArray(plan.connectors) ? plan.connectors : [];
+  harmonizeObjectSizes(objects, plan.preset);
   const hasCompleteCoordinates = objects.every(
     (object) => Number.isFinite(object.x) && Number.isFinite(object.y),
   );
-  const plannedOverlapCount = hasCompleteCoordinates ? countObjectOverlaps(objects) : 0;
   const isIntentionalSetOverlap =
-    plan.layout === "radial" &&
+    (plan.preset === "venn" || plan.layout === "radial") &&
     connectors.length === 0 &&
     objects.length >= 2 &&
     objects.length <= 3 &&
     objects.every((object) =>
       normalizedFallbackShape(object.fallbackShape).includes("ellipse"),
     );
+  const plannedOverlapCount = hasCompleteCoordinates
+    ? countObjectOverlaps(objects, { allowSetOverlap: isIntentionalSetOverlap })
+    : 0;
+  const plannedGapViolationCount = hasCompleteCoordinates
+    ? countGapViolations(objects)
+    : 0;
+  const plannedContainmentViolationCount = hasCompleteCoordinates
+    ? countContainmentViolations(objects)
+    : 0;
+  const plannedDirectionViolationCount = hasCompleteCoordinates
+    ? countDirectionViolations(objects, connectors, plan.layout, plan.preset)
+    : 0;
+  const enforcePresetLayout = Boolean(plan.preset && plan.preset !== "venn");
   const usePlannedCoordinates =
+    !enforcePresetLayout &&
     hasCompleteCoordinates &&
-    (plannedOverlapCount === 0 || isIntentionalSetOverlap);
+    plannedOverlapCount === 0 &&
+    plannedGapViolationCount === 0 &&
+    plannedContainmentViolationCount === 0 &&
+    plannedDirectionViolationCount === 0;
 
-  // Respect a planner's complete special-purpose composition (for example a
-  // Venn overlap or timeline). Otherwise use a deterministic fallback that is
-  // stable across models and generations.
+  // Production generation always uses the preset-aware deterministic layout.
+  // Planner coordinates remain useful for Venn overlap composition and for
+  // callers without a preset, but no longer make ordinary output model-dependent.
   if (!usePlannedCoordinates) {
-    if (plan.layout === "radial") positionRadialObjects(objects, connectors);
-    else if (plan.layout === "grid") positionGridObjects(objects);
-    else if (plan.layout === "swimlane") positionSwimlaneObjects(objects);
-    else positionLayeredObjects(objects, connectors, plan.layout);
+    positionGroupedFallback(objects, connectors, plan);
   }
 
   for (const object of objects) {
@@ -475,8 +856,15 @@ export function buildDiagramLayout(plan) {
     connectors,
     objects,
     canvas,
-    layoutSource: usePlannedCoordinates ? "planned" : "deterministic-fallback",
+    layoutSource: usePlannedCoordinates
+      ? "planned"
+      : enforcePresetLayout
+        ? "preset-deterministic"
+        : "deterministic-fallback",
     plannedOverlapCount,
+    plannedGapViolationCount,
+    plannedContainmentViolationCount,
+    plannedDirectionViolationCount,
   };
 }
 
@@ -518,7 +906,7 @@ function extractJsonObjects(text) {
   return [...new Set(candidates.filter(Boolean))];
 }
 
-export function parseDiagramPlan(text) {
+export function parseDiagramPlan(text, { preset = null } = {}) {
   let parsed;
   let anyJson = false;
   for (const candidate of extractJsonObjects(text)) {
@@ -576,6 +964,20 @@ export function parseDiagramPlan(text) {
       cleanPlanText(raw.fallbackShape || raw.shape, 60) || "rounded rectangle";
     const size = PLAN_SIZES.has(sizeValue) ? sizeValue : "medium";
     const minimumSize = minimumObjectSize({ label, fallbackShape, size });
+    const requestedWidth = planDimension(raw.width, minimumSize.width, {
+      min: 50,
+      max: 640,
+    });
+    const requestedHeight = planDimension(raw.height, minimumSize.height, {
+      min: 30,
+      max: 480,
+    });
+    const normalizedShape = normalizedFallbackShape(fallbackShape);
+    const preserveFreeformSize =
+      preset === "venn" ||
+      preset === "infographic" ||
+      normalizedShape.includes("group") ||
+      normalizedShape.includes("swimlane");
 
     objects.push({
       key,
@@ -587,16 +989,14 @@ export function parseDiagramPlan(text) {
       x: planCoordinate(raw.x),
       y: planCoordinate(raw.y),
       width: snapPlanDimension(
-        Math.max(
-          minimumSize.width,
-          planDimension(raw.width, minimumSize.width, { min: 50, max: 640 }),
-        ),
+        preserveFreeformSize
+          ? Math.max(minimumSize.width, requestedWidth)
+          : minimumSize.width,
       ),
       height: snapPlanDimension(
-        Math.max(
-          minimumSize.height,
-          planDimension(raw.height, minimumSize.height, { min: 30, max: 480 }),
-        ),
+        preserveFreeformSize
+          ? Math.max(minimumSize.height, requestedHeight)
+          : minimumSize.height,
       ),
       searchTerms: searchTerms.length > 0 ? searchTerms : [label],
       group: cleanPlanKey(raw.group),
@@ -636,6 +1036,7 @@ export function parseDiagramPlan(text) {
 
   const layoutValue = cleanPlanText(parsed.layout, 40).toLowerCase();
   return buildDiagramLayout({
+    preset,
     title: cleanPlanText(parsed.title, 160),
     summary: cleanPlanText(parsed.summary, 320),
     layout: PLAN_LAYOUTS.has(layoutValue) ? layoutValue : "left-to-right",
@@ -777,6 +1178,20 @@ function withStyleDefaults(style, defaults) {
   };
 }
 
+function withStyleOverrides(style, overrides) {
+  const overrideKeys = new Set(
+    Object.keys(overrides).map((key) => key.toLowerCase()),
+  );
+  const entries = styleEntries(style).filter(
+    ([key]) => !overrideKeys.has(key.toLowerCase()),
+  );
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === null || value === undefined) continue;
+    entries.push([key, value]);
+  }
+  return entries.map(([key, value]) => `${key}=${value}`).join(";");
+}
+
 function replaceStyleAttribute(tag, style) {
   const attr = `style="${xmlAttr(style)}"`;
   const re = /\sstyle\s*=\s*(?:"[^"]*"|'[^']*')/i;
@@ -817,6 +1232,59 @@ function replaceCellGeometry(cellXml, geometry) {
   return cellXml.replace(/<\/mxCell>\s*$/i, `${geometryXml}</mxCell>`);
 }
 
+function measureVertexBounds(xml) {
+  const vertices = new Map();
+  String(xml || "").replace(
+    /<mxCell\b[^>]*?(?:\/>|>[\s\S]*?<\/mxCell>)/gi,
+    (cellXml) => {
+      const openingTag = cellXml.match(/^<mxCell\b[^>]*?(?:\/?>)/i)?.[0] || "";
+      const attrs = parseXmlAttributes(openingTag);
+      if (attrValue(attrs, "vertex") !== "1") return cellXml;
+      const geometryTag = cellXml.match(/<mxGeometry\b[^>]*?(?:\/?>)/i)?.[0];
+      if (!geometryTag) return cellXml;
+      const geometryAttrs = parseXmlAttributes(geometryTag);
+      const number = (name) => {
+        const value = Number(attrValue(geometryAttrs, name));
+        return Number.isFinite(value) ? value : 0;
+      };
+      const id = attrValue(attrs, "id");
+      vertices.set(id, {
+        id,
+        parent: attrValue(attrs, "parent"),
+        x: number("x"),
+        y: number("y"),
+        width: number("width"),
+        height: number("height"),
+      });
+      return cellXml;
+    },
+  );
+
+  const resolved = new Map();
+  const resolve = (vertex, stack = new Set()) => {
+    if (resolved.has(vertex.id)) return resolved.get(vertex.id);
+    if (stack.has(vertex.id)) return { x: vertex.x, y: vertex.y };
+    stack.add(vertex.id);
+    const parent = vertices.get(vertex.parent);
+    const parentPosition = parent ? resolve(parent, stack) : { x: 0, y: 0 };
+    const position = {
+      x: parentPosition.x + vertex.x,
+      y: parentPosition.y + vertex.y,
+    };
+    resolved.set(vertex.id, position);
+    return position;
+  };
+
+  let maxX = 0;
+  let maxY = 0;
+  for (const vertex of vertices.values()) {
+    const position = resolve(vertex);
+    maxX = Math.max(maxX, position.x + vertex.width);
+    maxY = Math.max(maxY, position.y + vertex.height);
+  }
+  return { maxX, maxY, vertexIds: [...vertices.keys()] };
+}
+
 export function applyPlannedGeometry(xml, diagramPlan) {
   if (!diagramPlan?.objects?.length) {
     return {
@@ -826,7 +1294,13 @@ export function applyPlannedGeometry(xml, diagramPlan) {
       missing: [],
       canvas: diagramPlan?.canvas || null,
       source: diagramPlan?.layoutSource || null,
+      unplannedVertexCount: 0,
       plannedOverlapCount: diagramPlan?.plannedOverlapCount || 0,
+      plannedGapViolationCount: diagramPlan?.plannedGapViolationCount || 0,
+      plannedContainmentViolationCount:
+        diagramPlan?.plannedContainmentViolationCount || 0,
+      plannedDirectionViolationCount:
+        diagramPlan?.plannedDirectionViolationCount || 0,
     };
   }
 
@@ -834,7 +1308,19 @@ export function applyPlannedGeometry(xml, diagramPlan) {
   const byLabel = new Map(
     diagramPlan.objects.map((object) => [normalizedCellLabel(object.label), object]),
   );
+  const actualIdByPlanKey = new Map();
+  String(xml || "").replace(/<mxCell\b[^>]*?(?:\/?>)/gi, (openingTag) => {
+    const attrs = parseXmlAttributes(openingTag);
+    if (attrValue(attrs, "vertex") !== "1") return openingTag;
+    const rawId = attrValue(attrs, "id");
+    const object =
+      byKey.get(cleanPlanKey(rawId)) ||
+      byLabel.get(normalizedCellLabel(attrValue(attrs, "value")));
+    if (object && rawId) actualIdByPlanKey.set(object.key, rawId);
+    return openingTag;
+  });
   const matched = new Set();
+  const matchedCellIds = new Set();
   let applied = 0;
 
   let nextXml = String(xml || "").replace(
@@ -851,16 +1337,22 @@ export function applyPlannedGeometry(xml, diagramPlan) {
 
       let x = object.x;
       let y = object.y;
-      const parent = cleanPlanKey(attrValue(attrs, "parent"));
-      const parentObject = byKey.get(parent);
+      const parentObject = byKey.get(object.group);
+      const plannedParent = parentObject
+        ? actualIdByPlanKey.get(parentObject.key) || parentObject.key
+        : "1";
       if (parentObject) {
         x = Math.max(0, object.x - parentObject.x);
         y = Math.max(40, object.y - parentObject.y);
       }
 
       matched.add(object.key);
+      matchedCellIds.add(id);
       applied++;
-      return replaceCellGeometry(cellXml, {
+      const cellWithParent = cellXml.replace(openingTag, (tag) =>
+        replaceTagAttribute(tag, "parent", plannedParent),
+      );
+      return replaceCellGeometry(cellWithParent, {
         x: planCoordinate(x) ?? 0,
         y: planCoordinate(y) ?? 0,
         width: object.width,
@@ -869,18 +1361,30 @@ export function applyPlannedGeometry(xml, diagramPlan) {
     },
   );
 
-  if (diagramPlan.canvas) {
+  const bounds = measureVertexBounds(nextXml);
+  const canvas = diagramPlan.canvas
+    ? {
+        ...diagramPlan.canvas,
+        width: snapPlanDimension(
+          Math.max(diagramPlan.canvas.width, bounds.maxX + PLAN_PAGE_MARGIN),
+        ),
+        height: snapPlanDimension(
+          Math.max(diagramPlan.canvas.height, bounds.maxY + PLAN_PAGE_MARGIN),
+        ),
+      }
+    : null;
+  if (canvas) {
     nextXml = nextXml.replace(/<mxGraphModel\b[^>]*>/i, (tag) => {
       let nextTag = tag;
       const attributes = {
-        dx: diagramPlan.canvas.width,
-        dy: diagramPlan.canvas.height,
+        dx: canvas.width,
+        dy: canvas.height,
         grid: 1,
-        gridSize: diagramPlan.canvas.gridSize || PLAN_GRID_SIZE,
+        gridSize: canvas.gridSize || PLAN_GRID_SIZE,
         page: 1,
         pageScale: 1,
-        pageWidth: diagramPlan.canvas.width,
-        pageHeight: diagramPlan.canvas.height,
+        pageWidth: canvas.width,
+        pageHeight: canvas.height,
       };
       for (const [name, value] of Object.entries(attributes)) {
         nextTag = replaceTagAttribute(nextTag, name, value);
@@ -896,9 +1400,17 @@ export function applyPlannedGeometry(xml, diagramPlan) {
     missing: diagramPlan.objects
       .map((object) => object.key)
       .filter((key) => !matched.has(key)),
-    canvas: diagramPlan.canvas || null,
+    canvas,
+    unplannedVertexCount: bounds.vertexIds.filter(
+      (id) => !matchedCellIds.has(cleanPlanKey(id)),
+    ).length,
     source: diagramPlan.layoutSource || null,
     plannedOverlapCount: diagramPlan.plannedOverlapCount || 0,
+    plannedGapViolationCount: diagramPlan.plannedGapViolationCount || 0,
+    plannedContainmentViolationCount:
+      diagramPlan.plannedContainmentViolationCount || 0,
+    plannedDirectionViolationCount:
+      diagramPlan.plannedDirectionViolationCount || 0,
   };
 }
 
@@ -970,7 +1482,7 @@ function inferVertexShape(label) {
       "worker",
     )
   ) {
-    return "process";
+    return "rectangle";
   }
   return null;
 }
@@ -985,7 +1497,8 @@ function drawioShapeFromFallback(fallbackShape) {
   if (value.includes("hexagon")) return "hexagon";
   if (value.includes("swimlane") || value.includes("group")) return "swimlane";
   if (value.includes("ellipse")) return "ellipse";
-  if (value.includes("process")) return "process";
+  if (value.includes("process")) return "rectangle";
+  if (value.includes("rounded") || value.includes("rectangle")) return "rectangle";
   return null;
 }
 
@@ -1010,6 +1523,56 @@ function plannedPalette(object, shape, vertexIndex) {
   return VISUAL_PALETTE[0];
 }
 
+function edgeDefaultsForPreset(preset) {
+  const common = {
+    html: "1",
+    strokeColor: "#64748b",
+    fontColor: "#334155",
+    fontSize: "12",
+    fontFamily: "Helvetica",
+    labelBackgroundColor: "#ffffff",
+  };
+  if (preset === "mindmap") {
+    return {
+      ...common,
+      edgeStyle: "none",
+      curved: "0",
+      rounded: "0",
+      strokeWidth: "2",
+      endArrow: "none",
+      endFill: "0",
+    };
+  }
+  if (preset === "timeline") {
+    return {
+      ...common,
+      edgeStyle: "none",
+      rounded: "0",
+      strokeWidth: "3",
+      endArrow: "none",
+      endFill: "0",
+    };
+  }
+  if (["sequence", "fishbone"].includes(preset)) {
+    return {
+      ...common,
+      edgeStyle: "none",
+      rounded: "0",
+      strokeWidth: "2",
+      endArrow: "block",
+      endFill: "1",
+    };
+  }
+  return {
+    ...common,
+    edgeStyle: "orthogonalEdgeStyle",
+    rounded: "0",
+    strokeWidth: "2",
+    endArrow: "block",
+    endFill: "1",
+  };
+}
+
 export function applyVisualDefaults(xml, { diagramPlan = null } = {}) {
   let vertexIndex = 0;
   let applied = 0;
@@ -1025,22 +1588,36 @@ export function applyVisualDefaults(xml, { diagramPlan = null } = {}) {
   const nextXml = String(xml || "").replace(/<mxCell\b[^>]*?(?:\/>|>)/g, (tag) => {
     const attrs = parseXmlAttributes(tag);
     if (attrValue(attrs, "edge") === "1") {
-      const result = withStyleDefaults(attrValue(attrs, "style"), {
-        edgeStyle: "orthogonalEdgeStyle",
-        rounded: "0",
-        html: "1",
-        strokeColor: "#64748b",
-        strokeWidth: "2",
-        endArrow: "block",
-        endFill: "1",
-        fontColor: "#334155",
-        fontSize: "12",
-        fontFamily: "Helvetica",
-        labelBackgroundColor: "#ffffff",
-      });
-      if (result.added === 0) return tag;
+      const plannedConnector = (diagramPlan?.connectors || []).find(
+        (connector) =>
+          connector.from === cleanPlanKey(attrValue(attrs, "source")) &&
+          connector.to === cleanPlanKey(attrValue(attrs, "target")),
+      );
+      const directionDefaults =
+        plannedConnector?.direction === "none"
+          ? { endArrow: "none", endFill: "0" }
+          : plannedConnector?.direction === "both"
+            ? {
+                startArrow: "block",
+                startFill: "1",
+                endArrow: "block",
+                endFill: "1",
+              }
+            : {};
+      const presetDefaults = {
+        ...edgeDefaultsForPreset(diagramPlan?.preset),
+        ...directionDefaults,
+      };
+      const result = withStyleDefaults(
+        attrValue(attrs, "style"),
+        presetDefaults,
+      );
+      const nextStyle = diagramPlan?.preset
+        ? withStyleOverrides(result.style, presetDefaults)
+        : result.style;
+      if (result.added === 0 && nextStyle === attrValue(attrs, "style")) return tag;
       applied++;
-      return replaceStyleAttribute(tag, result.style);
+      return replaceStyleAttribute(tag, nextStyle);
     }
 
     if (attrValue(attrs, "vertex") !== "1") return tag;
@@ -1051,6 +1628,18 @@ export function applyVisualDefaults(xml, { diagramPlan = null } = {}) {
     const object =
       byKey.get(cleanPlanKey(attrValue(attrs, "id"))) ||
       byLabel.get(normalizedCellLabel(attrValue(attrs, "value")));
+    if (diagramPlan && !object) {
+      const structuralDefaults = withStyleDefaults(style, {
+        whiteSpace: "wrap",
+        html: "1",
+        fontColor: "#334155",
+        fontSize: "12",
+        fontFamily: "Helvetica",
+      });
+      if (structuralDefaults.added === 0) return tag;
+      applied++;
+      return replaceStyleAttribute(tag, structuralDefaults.style);
+    }
     const existingShape = styleValueCaseInsensitive(style, "shape");
     const inferredShape =
       drawioShapeFromFallback(object?.fallbackShape) ||
@@ -1058,7 +1647,9 @@ export function applyVisualDefaults(xml, { diagramPlan = null } = {}) {
     const shape = hasStyleKeyCaseInsensitive(style, "shape") ? null : inferredShape;
     const palette = plannedPalette(object, existingShape || inferredShape, vertexIndex);
     vertexIndex++;
-    const result = withStyleDefaults(style, {
+    const fontSize =
+      object?.size === "hero" ? "18" : object?.size === "large" ? "16" : "14";
+    const defaults = {
       ...(shape ? { shape } : {}),
       rounded: "1",
       whiteSpace: "wrap",
@@ -1067,15 +1658,37 @@ export function applyVisualDefaults(xml, { diagramPlan = null } = {}) {
       strokeColor: palette.strokeColor,
       strokeWidth: "2",
       fontColor: "#0f172a",
-      fontSize: object?.size === "hero" ? "18" : object?.size === "large" ? "16" : "14",
+      fontSize,
       fontFamily: "Helvetica",
       align: "center",
       verticalAlign: "middle",
       spacing: "8",
-    });
-    if (result.added === 0) return tag;
+    };
+    const result = withStyleDefaults(style, defaults);
+    const plannedShape = drawioShapeFromFallback(object?.fallbackShape);
+    const plannedOverrides = object
+      ? {
+          ...(plannedShape ? { shape: plannedShape } : {}),
+          rounded: plannedShape === "rhombus" ? "0" : "1",
+          whiteSpace: "wrap",
+          html: "1",
+          fillColor: palette.fillColor,
+          strokeColor: palette.strokeColor,
+          strokeWidth: "2",
+          fontColor: "#0f172a",
+          fontSize,
+          fontFamily: "Helvetica",
+          align: "center",
+          verticalAlign: "middle",
+          spacing: "8",
+        }
+      : {};
+    const nextStyle = object
+      ? withStyleOverrides(result.style, plannedOverrides)
+      : result.style;
+    if (result.added === 0 && nextStyle === style) return tag;
     applied++;
-    return replaceStyleAttribute(tag, result.style);
+    return replaceStyleAttribute(tag, nextStyle);
   });
 
   return { xml: nextXml, applied };
@@ -1373,7 +1986,7 @@ export async function generateDrawio(
     userPrompt: planningPrompt,
     maxTokens: planningMaxTokens,
   });
-  const diagramPlan = parseDiagramPlan(planningResult.text);
+  const diagramPlan = parseDiagramPlan(planningResult.text, { preset });
   log("plan parsed", {
     objects: diagramPlan.objects.length,
     connectors: diagramPlan.connectors.length,
@@ -1493,7 +2106,11 @@ export async function generateDrawio(
     layoutSlotsMissing: layout.missing,
     layoutSource: layout.source,
     plannedOverlapCount: layout.plannedOverlapCount,
+    plannedGapViolationCount: layout.plannedGapViolationCount,
+    plannedContainmentViolationCount: layout.plannedContainmentViolationCount,
+    plannedDirectionViolationCount: layout.plannedDirectionViolationCount,
     diagramCanvas: layout.canvas,
+    unplannedVertexCount: layout.unplannedVertexCount,
     iconCandidates: iconContext.candidates.map(summarizeIconCandidate),
     iconsApplied: iconMeta.applied,
     iconsAutoApplied: iconMeta.autoApplied,

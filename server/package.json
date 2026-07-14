@@ -10,6 +10,7 @@
     "test": "node --test",
     "ingest:drawio-libraries": "node scripts/ingest-drawio-libraries.js",
     "verify:drawio-enrichment": "node scripts/verify-drawio-enrichment.js",
+    "verify:diagram-layout": "node scripts/verify-diagram-layout.js",
     "verify:drawio-db-enrichment": "node scripts/verify-drawio-db-enrichment.js"
   },
   "engines": {

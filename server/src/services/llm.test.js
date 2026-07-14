@@ -146,6 +146,27 @@ test("layout blueprint creates aligned, content-aware, non-overlapping layers", 
   assert.equal(plan.canvas.height % 10, 0);
 });
 
+test("layered layout orders connected peers to reduce edge crossings", () => {
+  const plan = buildDiagramLayout({
+    preset: "architecture",
+    layout: "left-to-right",
+    objects: [
+      { key: "source-a", label: "Source A", fallbackShape: "process", size: "medium", width: 180, height: 80, x: null, y: null },
+      { key: "source-b", label: "Source B", fallbackShape: "process", size: "medium", width: 180, height: 80, x: null, y: null },
+      { key: "target-b", label: "Target B", fallbackShape: "process", size: "medium", width: 180, height: 80, x: null, y: null },
+      { key: "target-a", label: "Target A", fallbackShape: "process", size: "medium", width: 180, height: 80, x: null, y: null },
+    ],
+    connectors: [
+      { from: "source-a", to: "target-a" },
+      { from: "source-b", to: "target-b" },
+    ],
+  });
+  const byKey = new Map(plan.objects.map((object) => [object.key, object]));
+
+  assert(byKey.get("source-a").y < byKey.get("source-b").y);
+  assert(byKey.get("target-a").y < byKey.get("target-b").y);
+});
+
 test("layout blueprint repairs generic overlaps but preserves Venn composition", () => {
   const overlapping = [
     { key: "a", label: "A", fallbackShape: "process", width: 160, height: 70, x: 60, y: 60 },
@@ -170,7 +191,7 @@ test("layout blueprint repairs generic overlaps but preserves Venn composition",
   assert.equal(repaired.layoutSource, "deterministic-fallback");
   assert(repaired.objects[1].x > repaired.objects[0].x + repaired.objects[0].width);
   assert.equal(venn.layoutSource, "planned");
-  assert.equal(venn.plannedOverlapCount, 1);
+  assert.equal(venn.plannedOverlapCount, 0);
 });
 
 test("planned geometry enforces slots, canvas, and child-relative coordinates", () => {
@@ -182,16 +203,94 @@ test("planned geometry enforces slots, canvas, and child-relative coordinates", 
     ],
     connectors: [],
   });
-  const xml = `<mxfile><diagram><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="platform" value="Platform" style="shape=swimlane;" vertex="1" parent="1"><mxGeometry x="10" y="10" width="100" height="100" as="geometry"/></mxCell><mxCell id="api" value="API" style="shape=process;" vertex="1" parent="platform"><mxGeometry x="5" y="5" width="80" height="30" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>`;
+  const xml = `<mxfile><diagram><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="group-cell" value="Platform" style="shape=swimlane;" vertex="1" parent="1"><mxGeometry x="10" y="10" width="100" height="100" as="geometry"/></mxCell><mxCell id="node-cell" value="API" style="shape=process;" vertex="1" parent="1"><mxGeometry x="5" y="5" width="80" height="30" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>`;
 
   const result = applyPlannedGeometry(xml, diagramPlan);
 
   assert.equal(result.applied, 2);
   assert.deepEqual(result.missing, []);
-  assert.match(result.xml, /id="platform"[\s\S]*?x="100" y="80" width="420" height="240"/);
-  assert.match(result.xml, /id="api"[\s\S]*?x="60" y="70" width="180" height="70"/);
+  assert.match(result.xml, /id="group-cell"[\s\S]*?x="100" y="80" width="420" height="240"/);
+  assert.match(result.xml, /id="node-cell"[^>]*parent="group-cell"[\s\S]*?x="60" y="70" width="180" height="70"/);
   assert.match(result.xml, new RegExp(`pageWidth="${diagramPlan.canvas.width}"`));
   assert.match(result.xml, new RegExp(`pageHeight="${diagramPlan.canvas.height}"`));
+});
+
+test("canvas expands to include unplanned structural vertices", () => {
+  const diagramPlan = buildDiagramLayout({
+    layout: "grid",
+    objects: [
+      { key: "api", label: "API", fallbackShape: "process", x: 60, y: 60, width: 180, height: 80 },
+    ],
+    connectors: [],
+  });
+  const xml = `<mxfile><diagram><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="api" value="API" style="" vertex="1" parent="1"><mxGeometry x="0" y="0" width="10" height="10" as="geometry"/></mxCell><mxCell id="sequence-lifeline" value="" style="" vertex="1" parent="1"><mxGeometry x="620" y="200" width="10" height="500" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>`;
+
+  const result = applyPlannedGeometry(xml, diagramPlan);
+
+  assert.equal(result.unplannedVertexCount, 1);
+  assert.equal(result.canvas.width, 690);
+  assert.equal(result.canvas.height, 760);
+  assert.match(result.xml, /pageWidth="690"/);
+  assert.match(result.xml, /pageHeight="760"/);
+});
+
+test("production presets normalize sizes and override model-dependent coordinates", () => {
+  const plan = parseDiagramPlan(
+    JSON.stringify({
+      layout: "left-to-right",
+      objects: [
+        { key: "api", label: "API service", fallbackShape: "process", size: "medium", x: 500, y: 400, width: 80, height: 30 },
+        { key: "worker", label: "Background worker", fallbackShape: "process", size: "medium", x: 900, y: 700, width: 500, height: 300 },
+      ],
+      connectors: [{ from: "api", to: "worker" }],
+    }),
+    { preset: "architecture" },
+  );
+
+  assert.equal(plan.layoutSource, "preset-deterministic");
+  assert.deepEqual(
+    plan.objects.map((object) => [object.width, object.height]),
+    [
+      [190, 80],
+      [190, 80],
+    ],
+  );
+  assert.deepEqual(
+    plan.objects.map((object) => [object.x, object.y]),
+    [
+      [60, 60],
+      [370, 60],
+    ],
+  );
+});
+
+test("grouped preset layout sizes containers around aligned children", () => {
+  const plan = buildDiagramLayout({
+    preset: "architecture",
+    layout: "left-to-right",
+    objects: [
+      { key: "platform", label: "Platform", fallbackShape: "group", size: "large", group: "", width: 320, height: 180, x: null, y: null },
+      { key: "api", label: "API", fallbackShape: "process", size: "medium", group: "platform", width: 180, height: 80, x: null, y: null },
+      { key: "worker", label: "Worker", fallbackShape: "process", size: "medium", group: "platform", width: 180, height: 80, x: null, y: null },
+      { key: "db", label: "Database", fallbackShape: "cylinder", size: "medium", group: "", width: 180, height: 80, x: null, y: null },
+    ],
+    connectors: [
+      { from: "api", to: "worker" },
+      { from: "worker", to: "db" },
+    ],
+  });
+  const byKey = new Map(plan.objects.map((object) => [object.key, object]));
+  const platform = byKey.get("platform");
+  const api = byKey.get("api");
+  const worker = byKey.get("worker");
+  const db = byKey.get("db");
+
+  assert.equal(platform.width, 560);
+  assert.equal(platform.height, 180);
+  assert.equal(api.x - platform.x, 40);
+  assert.equal(api.y - platform.y, 60);
+  assert.equal(worker.x - (api.x + api.width), 120);
+  assert.equal(platform.x + platform.width + 120, db.x);
 });
 
 test("two-step generation makes a planning call before the XML call", async () => {
@@ -303,7 +402,7 @@ test("two-step generation makes a planning call before the XML call", async () =
   assert.equal(result.meta.iconSearchedObjectCount, 2);
   assert.equal(result.meta.layoutSlotsApplied, 2);
   assert.deepEqual(result.meta.layoutSlotsMissing, []);
-  assert.equal(result.meta.layoutSource, "deterministic-fallback");
+  assert.equal(result.meta.layoutSource, "preset-deterministic");
   assert.equal(result.meta.diagramCanvas.gridSize, 10);
   assert.match(result.xml, /<mxfile/);
 });
@@ -346,6 +445,27 @@ test("visual defaults preserve existing connector styles", () => {
   assert.match(edge, /endArrow=none/);
   assert.match(edge, /strokeWidth=2/);
   assert.match(edge, /html=1/);
+});
+
+test("visual defaults match connector routing to the diagram preset", () => {
+  const edgeXml = `<mxCell id="e1" style="" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry" /></mxCell>`;
+  const timeline = applyVisualDefaults(edgeXml, {
+    diagramPlan: { preset: "timeline", objects: [] },
+  }).xml;
+  const mindmap = applyVisualDefaults(edgeXml, {
+    diagramPlan: { preset: "mindmap", objects: [] },
+  }).xml;
+  const architecture = applyVisualDefaults(edgeXml, {
+    diagramPlan: { preset: "architecture", objects: [] },
+  }).xml;
+
+  assert.match(timeline, /edgeStyle=none/);
+  assert.match(timeline, /strokeWidth=3/);
+  assert.match(timeline, /endArrow=none/);
+  assert.match(mindmap, /edgeStyle=none/);
+  assert.match(mindmap, /endArrow=none/);
+  assert.match(architecture, /edgeStyle=orthogonalEdgeStyle/);
+  assert.match(architecture, /endArrow=block/);
 });
 
 test("visual defaults handle single-quoted XML attributes without duplicates", () => {
@@ -408,7 +528,7 @@ test("visual defaults infer richer shapes for common non-icon labels", () => {
   assert.match(result.xml, /id="cloud"[^>]*shape=cloud/);
   assert.match(result.xml, /id="user"[^>]*shape=umlActor/);
   assert.match(result.xml, /id="team"[^>]*shape=ellipse/);
-  assert.match(result.xml, /id="service"[^>]*shape=process/);
+  assert.match(result.xml, /id="service"[^>]*shape=rectangle/);
 });
 
 test("planned objects in the same group receive a coherent default treatment", () => {
@@ -435,6 +555,46 @@ test("planned objects in the same group receive a coherent default treatment", (
   assert.deepEqual(strokes, [strokes[0], strokes[0]]);
   assert.equal((result.xml.match(/fontSize=14/g) || []).length, 2);
   assert.equal((result.xml.match(/strokeWidth=2/g) || []).length, 2);
+});
+
+test("planned styling corrects conflicting model shapes and text sizes", () => {
+  const xml = `<mxCell id="db" value="Orders database" style="shape=process;fillColor=#ff0000;strokeColor=#000000;strokeWidth=1;fontSize=8;fontFamily=Comic Sans MS;" vertex="1" parent="1"><mxGeometry x="60" y="60" width="100" height="40" as="geometry" /></mxCell>`;
+  const diagramPlan = {
+    objects: [
+      {
+        key: "db",
+        label: "Orders database",
+        fallbackShape: "cylinder",
+        group: "data",
+        size: "large",
+      },
+    ],
+  };
+
+  const result = applyVisualDefaults(xml, { diagramPlan });
+  const cell = result.xml.match(/<mxCell[^>]+/)?.[0] || "";
+
+  assert.match(cell, /shape=cylinder/);
+  assert.doesNotMatch(cell, /shape=process/);
+  assert.doesNotMatch(cell, /fillColor=#ff0000/);
+  assert.match(cell, /strokeWidth=2/);
+  assert.match(cell, /fontSize=16/);
+  assert.match(cell, /fontFamily=Helvetica/);
+  assert.doesNotMatch(cell, /Comic Sans/);
+});
+
+test("planned styling preserves unplanned diagram-specific structural vertices", () => {
+  const xml = `<mxCell id="lifeline" value="" style="shape=line;dashed=1;strokeColor=#94a3b8;" vertex="1" parent="1"><mxGeometry x="100" y="120" width="1" height="500" as="geometry" /></mxCell>`;
+  const result = applyVisualDefaults(xml, {
+    diagramPlan: { preset: "sequence", objects: [], connectors: [] },
+  });
+  const cell = result.xml.match(/<mxCell[^>]+/)?.[0] || "";
+
+  assert.match(cell, /shape=line/);
+  assert.match(cell, /dashed=1/);
+  assert.match(cell, /strokeColor=#94a3b8/);
+  assert.doesNotMatch(cell, /fillColor=/);
+  assert.doesNotMatch(cell, /rounded=/);
 });
 
 test("visual defaults preserve existing styles and skip icon image vertices", () => {

@@ -10,6 +10,7 @@ import morgan from "morgan";
 import { config } from "./config.js";
 import { pool, initSchema } from "./db.js";
 import { initSettings } from "./services/settings.js";
+import { initLlmCatalog } from "./services/llmCatalog.js";
 import passport from "./auth/passport.js";
 import authRoutes from "./auth/routes.js";
 import userRoutes from "./routes/user.js";
@@ -22,7 +23,9 @@ const app = express();
 app.set("trust proxy", 1);
 
 app.use(morgan(config.env === "production" ? "combined" : "dev"));
-app.use(express.json({ limit: "2mb" }));
+// Admin library uploads send XML inside JSON. A 10 MiB XML file can become
+// larger on the wire because quotes/newlines are escaped by JSON.stringify.
+app.use(express.json({ limit: "20mb" }));
 
 // In production the SPA is same-origin (served + proxied by nginx), so CORS is
 // only really needed for local Vite dev on a different port.
@@ -96,6 +99,7 @@ app.use((err, req, res, next) => {
 async function start() {
   await initSchema();
   await initSettings();
+  await initLlmCatalog();
   app.listen(config.port, () => {
     console.log(`SynthBoard API listening on :${config.port}`);
     console.log(`APP_URL: ${config.appUrl}`);

@@ -98,6 +98,18 @@ rest are plain env vars. See [`.env.azure.example`](./.env.azure.example) for th
 full list. The runtime app config (`DATABASE_URL`, `SESSION_SECRET`, OAuth, LLM,
 quota) is identical to the root [`.env.example`](../.env.example).
 
+The deployment templates bootstrap the NVIDIA provider. For every additional
+provider configured in **Admin → AI models**, add its key as a Container App
+secret and expose it with the exact environment-variable name stored in the
+provider record. For example:
+
+```bash
+az containerapp secret set -g synthboard-rg -n synthboard \
+  --secrets openai-api-key='<key>'
+az containerapp update -g synthboard-rg -n synthboard \
+  --set-env-vars OPENAI_API_KEY=secretref:openai-api-key
+```
+
 ## Operating
 
 ```bash

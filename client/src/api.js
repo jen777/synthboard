@@ -19,6 +19,7 @@ export const api = {
   me: () => request("/api/user/me"),
   logout: () => request("/auth/logout", { method: "POST" }),
   presets: () => request("/api/visualizations/presets"),
+  models: () => request("/api/visualizations/models"),
   list: () => request("/api/visualizations"),
   get: (id) => request(`/api/visualizations/${id}`),
   create: (payload) =>
@@ -54,5 +55,46 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(settings),
       }),
+    iconLibraries: () => request("/api/admin/icon-libraries"),
+    iconLibraryObjects: (id) =>
+      request(`/api/admin/icon-libraries/${encodeURIComponent(id)}/objects`),
+    iconLibraryObjectPreview: (libraryId, objectId) =>
+      request(
+        `/api/admin/icon-libraries/${encodeURIComponent(libraryId)}/objects/${encodeURIComponent(objectId)}/preview`,
+      ),
+    uploadIconLibrary: (payload) =>
+      request("/api/admin/icon-libraries", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    deleteIconLibrary: (id) =>
+      request(`/api/admin/icon-libraries/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
+    llmCatalog: () => request("/api/admin/llm-catalog"),
+    createLlmProvider: (payload) =>
+      request("/api/admin/llm-providers", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    updateLlmProvider: (id, payload) =>
+      request(`/api/admin/llm-providers/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+    deleteLlmProvider: (id) =>
+      request(`/api/admin/llm-providers/${id}`, { method: "DELETE" }),
+    createLlmModel: (payload) =>
+      request("/api/admin/llm-models", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    updateLlmModel: (id, payload) =>
+      request(`/api/admin/llm-models/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+    deleteLlmModel: (id) =>
+      request(`/api/admin/llm-models/${id}`, { method: "DELETE" }),
   },
 };

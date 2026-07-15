@@ -66,6 +66,41 @@ CREATE TABLE IF NOT EXISTS app_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- OpenAI-compatible LLM providers and models. Secrets never live here:
+-- api_key_env stores only the environment-variable name that contains the key.
+CREATE TABLE IF NOT EXISTS llm_providers (
+  id          BIGSERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  base_url    TEXT NOT NULL,
+  api_key_env TEXT NOT NULL,
+  enabled     BOOLEAN NOT NULL DEFAULT true,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS llm_models (
+  id           BIGSERIAL PRIMARY KEY,
+  provider_id  BIGINT NOT NULL REFERENCES llm_providers(id) ON DELETE CASCADE,
+  model_name   TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  min_level    SMALLINT NOT NULL DEFAULT 1,
+  enabled      BOOLEAN NOT NULL DEFAULT true,
+  is_default   BOOLEAN NOT NULL DEFAULT false,
+  max_tokens   INTEGER NOT NULL DEFAULT 8192,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(provider_id, model_name)
+);
+
+-- Backfill for databases created while sampling parameters were model settings.
+ALTER TABLE llm_models DROP COLUMN IF EXISTS temperature;
+ALTER TABLE llm_models DROP COLUMN IF EXISTS top_p;
+
+CREATE INDEX IF NOT EXISTS idx_llm_models_provider
+  ON llm_models(provider_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_models_single_default
+  ON llm_models ((is_default)) WHERE is_default;
+
 -- Per-generation telemetry for diagrams produced by the LLM. One row is written
 -- each time generation finishes (success or failure). Kept in its own table so
 -- the visualizations table stays lean and the admin report can aggregate freely.
@@ -86,9 +121,7 @@ CREATE TABLE IF NOT EXISTS diagram_generations (
   prompt_tokens     INTEGER,
   completion_tokens INTEGER,
   total_tokens      INTEGER,
-  -- Sampling parameters and stop reason used for the call.
-  temperature       REAL,
-  top_p             REAL,
+  -- Provider stop reason for the call.
   finish_reason     TEXT,
   -- Any extra provider metadata we want to keep without a column each.
   meta              JSONB,
@@ -96,10 +129,51 @@ CREATE TABLE IF NOT EXISTS diagram_generations (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Backfill for databases created while sampling parameters were telemetry fields.
+ALTER TABLE diagram_generations DROP COLUMN IF EXISTS temperature;
+ALTER TABLE diagram_generations DROP COLUMN IF EXISTS top_p;
+
 CREATE INDEX IF NOT EXISTS idx_diagram_generations_created
   ON diagram_generations(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_diagram_generations_user
   ON diagram_generations(user_id);
+
+-- Draw.io custom library catalog. Libraries are ingested from public or local
+-- <mxlibrary> XML files, indexed by compact metadata, and referenced during LLM
+-- generation without putting the full icon payloads into the prompt.
+CREATE TABLE IF NOT EXISTS drawio_icon_libraries (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  provider      TEXT,
+  style_family  TEXT,
+  source_url    TEXT,
+  source_type   TEXT,
+  version       TEXT,
+  object_count  INTEGER NOT NULL DEFAULT 0,
+  metadata      JSONB,
+  ingested_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS drawio_icon_objects (
+  id             TEXT PRIMARY KEY,
+  library_id     TEXT NOT NULL REFERENCES drawio_icon_libraries(id) ON DELETE CASCADE,
+  title          TEXT NOT NULL,
+  search_text    TEXT NOT NULL,
+  aliases        TEXT[] NOT NULL DEFAULT '{}',
+  width          REAL,
+  height         REAL,
+  aspect         TEXT,
+  style          TEXT,
+  cell_xml       TEXT,
+  xml_compressed TEXT NOT NULL,
+  metadata       JSONB,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_drawio_icon_objects_library
+  ON drawio_icon_objects(library_id);
+CREATE INDEX IF NOT EXISTS idx_drawio_icon_objects_search_text
+  ON drawio_icon_objects USING gin (to_tsvector('simple', search_text));
 `;
 
 export async function initSchema() {

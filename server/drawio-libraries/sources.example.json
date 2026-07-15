@@ -1,0 +1,15 @@
+{
+  "libraries": [
+    {
+      "id": "azure-general",
+      "name": "Azure General",
+      "provider": "Azure",
+      "styleFamily": "azure-flat",
+      "url": "https://raw.githubusercontent.com/pacodelacruz/diagrams-net-azure-libraries/master/Azure-General.xml",
+      "metadata": {
+        "licenseReviewRequired": true,
+        "notes": "Example public draw.io custom library source. Review upstream licensing before production use."
+      }
+    }
+  ]
+}

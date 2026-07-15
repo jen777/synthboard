@@ -2,8 +2,9 @@
 //
 // Values live in the `app_settings` table and are cached in memory. On boot we
 // seed any missing keys from environment defaults, so a fresh deployment behaves
-// exactly like before the admin panel existed. The LLM service and quota checks
-// read from here instead of static config, so an admin can retune them live.
+// exactly like before the admin panel existed. Account quota checks read from
+// here. Provider endpoints, model ids, and generation parameters live in the
+// dedicated LLM catalog tables instead.
 import { query } from "../db.js";
 import { LEVELS, levelByNumber } from "./levels.js";
 
@@ -37,52 +38,6 @@ for (const l of LEVELS) {
 // Schema for every editable setting: type, env-var default source, fallback,
 // and (for numbers) a sane range. `label`/`group` drive the admin UI.
 export const SETTINGS_SCHEMA = {
-  llm_model: {
-    type: "string",
-    env: "LLM_MODEL",
-    default: "minimaxai/minimax-m2.7",
-    group: "model",
-    label: "Model",
-    help: "OpenAI-compatible model id served by the configured endpoint.",
-  },
-  llm_base_url: {
-    type: "string",
-    env: "LLM_BASE_URL",
-    default: "https://integrate.api.nvidia.com/v1",
-    group: "model",
-    label: "Base URL",
-    help: "OpenAI-compatible API endpoint. The API key stays server-side (env).",
-  },
-  llm_max_tokens: {
-    type: "int",
-    env: "LLM_MAX_TOKENS",
-    default: 8192,
-    min: 256,
-    max: 32768,
-    group: "model",
-    label: "Max tokens",
-    help: "Maximum tokens generated per diagram.",
-  },
-  llm_temperature: {
-    type: "float",
-    env: "LLM_TEMPERATURE",
-    default: 1,
-    min: 0,
-    max: 2,
-    group: "model",
-    label: "Temperature",
-    help: "Sampling temperature (0–2).",
-  },
-  llm_top_p: {
-    type: "float",
-    env: "LLM_TOP_P",
-    default: 0.95,
-    min: 0,
-    max: 1,
-    group: "model",
-    label: "Top P",
-    help: "Nucleus sampling probability (0–1).",
-  },
   ...levelSettings,
 };
 

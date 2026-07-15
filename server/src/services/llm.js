@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { config } from "../config.js";
 import { PRESETS } from "./presets.js";
+import { buildDiagramPromptGuide } from "./diagramPromptGuides.js";
 import {
   applyIconEnhancements,
   applyIconRowsToXml,
@@ -54,8 +55,10 @@ const BASE_SYSTEM = `You are SynthBoard, an expert at turning unstructured notes
 OUTPUT CONTRACT — follow exactly:
 - Respond with a SINGLE, complete, valid draw.io document and nothing else.
 - The document MUST be a well-formed <mxfile> element containing one <diagram> with an embedded <mxGraphModel>.
+- Use uncompressed XML and never emit XML comments.
 - Do NOT wrap the XML in markdown code fences. Do NOT add explanations before or after.
 - Every cell must have a unique id. Vertices use vertex="1"; edges use edge="1" with valid source/target ids. The two root cells (id "0" and "1") must be present.
+- Every non-root cell must reference a valid parent. Every edge must contain <mxGeometry relative="1" as="geometry" />.
 - Provide explicit geometry (mxGeometry x/y/width/height) for every vertex so the diagram renders without auto-layout. Avoid overlapping shapes; leave generous spacing.
 - Use readable labels derived from the user's content. Never invent facts that aren't supported by the input; if the input is sparse, produce a faithful, minimal diagram.
 - Use tasteful styling (fill colors, rounded corners, font sizes) appropriate to the diagram type.
@@ -66,7 +69,7 @@ OUTPUT CONTRACT — follow exactly:
 Example skeleton (structure only — adapt content, styles, and geometry):
 <mxfile host="synthboard">
   <diagram id="d1" name="Page-1">
-    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0" adaptiveColors="auto">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -86,7 +89,7 @@ Example skeleton (structure only — adapt content, styles, and geometry):
 
 const XML_REPAIR_SYSTEM = `You repair malformed draw.io XML.
 
-Return one complete, well-formed <mxfile> document and nothing else. Preserve the approved objects, labels, relationships, styles, icon placeholders, and intended layout. Restore missing root cells, tags, attributes, geometry, and connector references. Escape XML-reserved characters. Every mxCell id must be unique and every edge source/target must reference an existing cell. Do not add unsupported facts or explanatory text.`;
+Return one complete, uncompressed, well-formed <mxfile> document and nothing else. Preserve the approved objects, labels, relationships, styles, icon placeholders, and intended layout. Restore missing root cells, tags, valid parent references, attributes, vertex geometry, edge-relative geometry, and connector references. Escape XML-reserved characters. Every mxCell id must be unique and every edge source/target must reference an existing cell. Never emit XML comments. Do not add unsupported facts or explanatory text.`;
 
 const VISUAL_DESIGN_GUIDANCE = `Visual design requirements:
 - Build a polished diagram, not a plain wireframe. Use a restrained but visible palette with 3-5 complementary colors, consistent stroke colors, and high text contrast.
@@ -1049,9 +1052,16 @@ export function parseDiagramPlan(text, { preset = null } = {}) {
   });
 }
 
-export function buildPlanningPrompt({ presetDef, title, sourceText }) {
+export function buildPlanningPrompt({ preset, presetDef, title, sourceText }) {
+  const promptGuide = buildDiagramPromptGuide({
+    preset,
+    presetDef,
+    stage: "planning",
+  });
   return `Diagram type: ${presetDef.label}
 ${presetDef.guidance}
+
+${promptGuide}
 
 ${title ? `Suggested title: ${title}\n` : ""}Source material to analyze:
 """
@@ -1605,6 +1615,7 @@ export function applyPlannedGeometry(xml, diagramPlan) {
         dy: canvas.height,
         grid: 1,
         gridSize: canvas.gridSize || PLAN_GRID_SIZE,
+        adaptiveColors: "auto",
         page: 1,
         pageScale: 1,
         pageWidth: canvas.width,
@@ -1726,6 +1737,19 @@ function drawioShapeFromFallback(fallbackShape) {
   return null;
 }
 
+function drawioPerimeterForShape(shape) {
+  const value = String(shape || "").toLowerCase();
+  if (value === "ellipse") return "ellipsePerimeter";
+  if (value === "rhombus") return "rhombusPerimeter";
+  if (value === "triangle") return "trianglePerimeter";
+  if (value === "hexagon") return "hexagonPerimeter2";
+  if (value === "parallelogram") return "parallelogramPerimeter";
+  if (value === "trapezoid") return "trapezoidPerimeter";
+  if (value === "callout") return "calloutPerimeter";
+  if (value === "step") return "stepPerimeter";
+  return null;
+}
+
 function stablePaletteIndex(value) {
   let hash = 0;
   for (const char of String(value || "")) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
@@ -1760,7 +1784,7 @@ function edgeDefaultsForPreset(preset) {
     return {
       ...common,
       edgeStyle: "none",
-      curved: "0",
+      curved: "1",
       rounded: "0",
       strokeWidth: "2",
       endArrow: "none",
@@ -1869,12 +1893,14 @@ export function applyVisualDefaults(xml, { diagramPlan = null } = {}) {
       drawioShapeFromFallback(object?.fallbackShape) ||
       inferVertexShape(attrValue(attrs, "value"));
     const shape = hasStyleKeyCaseInsensitive(style, "shape") ? null : inferredShape;
+    const perimeter = drawioPerimeterForShape(existingShape || inferredShape);
     const palette = plannedPalette(object, existingShape || inferredShape, vertexIndex);
     vertexIndex++;
     const fontSize =
       object?.size === "hero" ? "18" : object?.size === "large" ? "16" : "14";
     const defaults = {
       ...(shape ? { shape } : {}),
+      ...(perimeter ? { perimeter } : {}),
       rounded: "1",
       whiteSpace: "wrap",
       html: "1",
@@ -1890,9 +1916,11 @@ export function applyVisualDefaults(xml, { diagramPlan = null } = {}) {
     };
     const result = withStyleDefaults(style, defaults);
     const plannedShape = drawioShapeFromFallback(object?.fallbackShape);
+    const plannedPerimeter = drawioPerimeterForShape(plannedShape);
     const plannedOverrides = object
       ? {
           ...(plannedShape ? { shape: plannedShape } : {}),
+          ...(plannedPerimeter ? { perimeter: plannedPerimeter } : {}),
           rounded: plannedShape === "rhombus" ? "0" : "1",
           whiteSpace: "wrap",
           html: "1",
@@ -2050,16 +2078,23 @@ export async function postProcessDrawioXml(
 }
 
 export function buildGenerationPrompt({
+  preset,
   presetDef,
   diagramPlan,
   iconPrompt,
   title,
   sourceText,
 }) {
+  const promptGuide = buildDiagramPromptGuide({
+    preset,
+    presetDef,
+    stage: "xml",
+  });
   return `Diagram type: ${presetDef.label}
 ${presetDef.guidance}
 
 ${VISUAL_DESIGN_GUIDANCE}
+\n${promptGuide}
 ${iconPrompt ? `\n${iconPrompt}\n` : ""}
 
 Approved diagram plan from step 1:
@@ -2077,8 +2112,15 @@ ${sourceText}
 Return only the draw.io <mxfile> XML.`;
 }
 
-function buildXmlRepairPrompt({ draft, diagramPlan }) {
-  return `Approved diagram plan:
+function buildXmlRepairPrompt({ draft, diagramPlan, preset, presetDef }) {
+  const promptGuide = buildDiagramPromptGuide({
+    preset,
+    presetDef,
+    stage: "xml",
+  });
+  return `${promptGuide}
+
+Approved diagram plan:
 ${JSON.stringify(diagramPlan, null, 2)}
 
 Malformed or incomplete draft returned by the diagram model:
@@ -2113,7 +2155,7 @@ export function buildFallbackDrawioXml(diagramPlan) {
     .join("");
   const width = Math.max(850, Number(diagramPlan?.canvas?.width) || 850);
   const height = Math.max(600, Number(diagramPlan?.canvas?.height) || 600);
-  return `<mxfile host="synthboard"><diagram id="d1" name="Page-1"><mxGraphModel grid="1" gridSize="10" guides="1" page="1" pageWidth="${width}" pageHeight="${height}"><root><mxCell id="0"/><mxCell id="1" parent="0"/>${vertices}${edges}</root></mxGraphModel></diagram></mxfile>`;
+  return `<mxfile host="synthboard"><diagram id="d1" name="Page-1"><mxGraphModel grid="1" gridSize="10" guides="1" adaptiveColors="auto" page="1" pageWidth="${width}" pageHeight="${height}"><root><mxCell id="0"/><mxCell id="1" parent="0"/>${vertices}${edges}</root></mxGraphModel></diagram></mxfile>`;
 }
 
 async function streamModelCall({
@@ -2243,6 +2285,7 @@ export async function generateDrawio(
   });
 
   const planningPrompt = buildPlanningPrompt({
+    preset,
     presetDef,
     title,
     sourceText: trimmedSource,
@@ -2294,6 +2337,7 @@ export async function generateDrawio(
   const iconLookupMs = Date.now() - iconLookupStartedAt;
 
   const userPrompt = buildGenerationPrompt({
+    preset,
     presetDef,
     diagramPlan,
     iconPrompt: iconContext.prompt,
@@ -2332,6 +2376,8 @@ export async function generateDrawio(
         userPrompt: buildXmlRepairPrompt({
           draft: selectedXml || generationResult.text,
           diagramPlan,
+          preset,
+          presetDef,
         }),
         maxTokens,
       });

@@ -26,6 +26,7 @@ const {
 
 test("generation prompt includes plan-driven visual design requirements", () => {
   const prompt = buildGenerationPrompt({
+    preset: "architecture",
     presetDef: {
       label: "System Architecture",
       guidance: "Produce a SYSTEM / NETWORK ARCHITECTURE DIAGRAM.",
@@ -52,6 +53,10 @@ test("generation prompt includes plan-driven visual design requirements", () => 
   });
 
   assert.match(prompt, /Visual design requirements:/);
+  assert.match(prompt, /Shared draw\.io xml guide:/);
+  assert.match(prompt, /Use titled nested containers/);
+  assert.match(prompt, /adaptiveColors="auto"/);
+  assert.match(prompt, /Every connected edge needs valid source and target ids/);
   assert.match(prompt, /3-5 complementary colors/);
   assert.match(prompt, /standard draw\.io shapes/);
   assert.match(prompt, /cylinders for data stores/);
@@ -71,6 +76,7 @@ test("generation prompt includes plan-driven visual design requirements", () => 
 
 test("planning prompt and parser produce a bounded object/connector plan", () => {
   const planningPrompt = buildPlanningPrompt({
+    preset: "architecture",
     presetDef: {
       label: "System Architecture",
       guidance: "Produce a SYSTEM / NETWORK ARCHITECTURE DIAGRAM.",
@@ -79,6 +85,9 @@ test("planning prompt and parser produce a bounded object/connector plan", () =>
     sourceText: "React sends orders to the API and Postgres.",
   });
   assert.match(planningPrompt, /Source material to analyze:/);
+  assert.match(planningPrompt, /Shared draw\.io planning guide:/);
+  assert.match(planningPrompt, /Prefer a source-supported gateway/);
+  assert.doesNotMatch(planningPrompt, /Every connected edge needs valid source/);
   assert.match(planningPrompt, /Return only the structured JSON diagram plan/);
 
   const plan = parseDiagramPlan(`Here is the plan:\n\`\`\`json
@@ -612,6 +621,7 @@ test("visual defaults match connector routing to the diagram preset", () => {
   assert.match(timeline, /strokeWidth=3/);
   assert.match(timeline, /endArrow=none/);
   assert.match(mindmap, /edgeStyle=none/);
+  assert.match(mindmap, /curved=1/);
   assert.match(mindmap, /endArrow=none/);
   assert.match(architecture, /edgeStyle=orthogonalEdgeStyle/);
   assert.match(architecture, /endArrow=block/);
@@ -672,11 +682,14 @@ test("visual defaults infer richer shapes for common non-icon labels", () => {
 
   assert.match(result.xml, /id="db"[^>]*shape=cylinder/);
   assert.match(result.xml, /id="decision"[^>]*shape=rhombus/);
+  assert.match(result.xml, /id="decision"[^>]*perimeter=rhombusPerimeter/);
   assert.match(result.xml, /id="doc"[^>]*shape=document/);
   assert.match(result.xml, /id="queue"[^>]*shape=hexagon/);
+  assert.match(result.xml, /id="queue"[^>]*perimeter=hexagonPerimeter2/);
   assert.match(result.xml, /id="cloud"[^>]*shape=cloud/);
   assert.match(result.xml, /id="user"[^>]*shape=umlActor/);
   assert.match(result.xml, /id="team"[^>]*shape=ellipse/);
+  assert.match(result.xml, /id="team"[^>]*perimeter=ellipsePerimeter/);
   assert.match(result.xml, /id="service"[^>]*shape=rectangle/);
 });
 

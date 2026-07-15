@@ -146,6 +146,7 @@ ENVVARS=(
   "GOOGLE_CLIENT_ID=secretref:google-client-id"
   "GOOGLE_CLIENT_SECRET=secretref:google-client-secret"
   "NVIDIA_API_KEY=secretref:nvidia-api-key"
+  "ANTHROPIC_API_KEY=secretref:anthropic-api-key"
   "LLM_API_KEY_ENV=${LLM_API_KEY_ENV:-NVIDIA_API_KEY}"
   "LLM_BASE_URL=${LLM_BASE_URL:-https://integrate.api.nvidia.com/v1}"
   "LLM_MODEL=${LLM_MODEL:-minimaxai/minimax-m2.7}"

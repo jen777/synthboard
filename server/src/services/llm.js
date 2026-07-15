@@ -84,6 +84,10 @@ Example skeleton (structure only — adapt content, styles, and geometry):
   </diagram>
 </mxfile>`;
 
+const XML_REPAIR_SYSTEM = `You repair malformed draw.io XML.
+
+Return one complete, well-formed <mxfile> document and nothing else. Preserve the approved objects, labels, relationships, styles, icon placeholders, and intended layout. Restore missing root cells, tags, attributes, geometry, and connector references. Escape XML-reserved characters. Every mxCell id must be unique and every edge source/target must reference an existing cell. Do not add unsupported facts or explanatory text.`;
+
 const VISUAL_DESIGN_GUIDANCE = `Visual design requirements:
 - Build a polished diagram, not a plain wireframe. Use a restrained but visible palette with 3-5 complementary colors, consistent stroke colors, and high text contrast.
 - Use diagram-appropriate standard draw.io shapes and basic objects: rounded/process rectangles for work or services, cylinders for data stores, diamonds for decisions, document shapes for files, clouds for networks, actor shapes for users, hexagons for queues/events, swimlanes for responsibility, and containers/boundaries for groups.
@@ -1076,25 +1080,245 @@ export function combineUsage(...usages) {
   return found ? totals : undefined;
 }
 
-// Pull the <mxfile>…</mxfile> (or bare <mxGraphModel>) out of the model output,
-// tolerating accidental code fences or surrounding prose.
-function extractDrawioXml(text) {
-  if (!text) return null;
-  let t = text.trim();
+const BARE_XML_AMPERSAND = /&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-f]+;)/i;
 
-  // Strip a single fenced block if present.
-  const fence = t.match(/```(?:xml)?\s*([\s\S]*?)```/i);
-  if (fence) t = fence[1].trim();
-
-  const mxfile = t.match(/<mxfile[\s\S]*<\/mxfile>/i);
-  if (mxfile) return mxfile[0];
-
-  const model = t.match(/<mxGraphModel[\s\S]*<\/mxGraphModel>/i);
-  if (model) {
-    // Wrap a bare model so the client always gets a valid .drawio file.
-    return `<mxfile host="synthboard"><diagram id="d1" name="Page-1">${model[0]}</diagram></mxfile>`;
+function findXmlTagEnd(xml, start) {
+  let quote = "";
+  for (let index = start + 1; index < xml.length; index++) {
+    const char = xml[index];
+    if (quote) {
+      if (char === quote) quote = "";
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if (char === ">") return index;
   }
-  return null;
+  return -1;
+}
+
+function scanXmlStructure(xml) {
+  const stack = [];
+  const errors = [];
+  const elementNames = new Set();
+  const cellIds = new Set();
+  const duplicateCellIds = new Set();
+  const references = [];
+  let documentRoot = "";
+  let cursor = 0;
+
+  while (cursor < xml.length) {
+    const tagStart = xml.indexOf("<", cursor);
+    const text = tagStart < 0 ? xml.slice(cursor) : xml.slice(cursor, tagStart);
+    if (BARE_XML_AMPERSAND.test(text)) errors.push("Unescaped ampersand in text");
+    if (tagStart < 0) break;
+
+    if (xml.startsWith("<!--", tagStart)) {
+      const end = xml.indexOf("-->", tagStart + 4);
+      if (end < 0) {
+        errors.push("Unclosed XML comment");
+        break;
+      }
+      cursor = end + 3;
+      continue;
+    }
+    if (xml.startsWith("<![CDATA[", tagStart)) {
+      const end = xml.indexOf("]]>", tagStart + 9);
+      if (end < 0) {
+        errors.push("Unclosed CDATA section");
+        break;
+      }
+      cursor = end + 3;
+      continue;
+    }
+    if (xml.startsWith("<?", tagStart)) {
+      const end = xml.indexOf("?>", tagStart + 2);
+      if (end < 0) {
+        errors.push("Unclosed XML processing instruction");
+        break;
+      }
+      cursor = end + 2;
+      continue;
+    }
+    if (/^<!DOCTYPE\b/i.test(xml.slice(tagStart, tagStart + 10))) {
+      errors.push("DOCTYPE is not allowed");
+      break;
+    }
+
+    const tagEnd = findXmlTagEnd(xml, tagStart);
+    if (tagEnd < 0) {
+      errors.push("Incomplete XML tag");
+      break;
+    }
+    const tag = xml.slice(tagStart, tagEnd + 1);
+    if (BARE_XML_AMPERSAND.test(tag)) errors.push("Unescaped ampersand in tag");
+    const body = tag.slice(1, -1).trim();
+    const closing = body.startsWith("/");
+    const selfClosing = !closing && /\/\s*$/.test(body);
+    const nameMatch = body.match(closing ? /^\/\s*([:\w.-]+)/ : /^([:\w.-]+)/);
+    if (!nameMatch) {
+      errors.push("Invalid XML tag");
+      cursor = tagEnd + 1;
+      continue;
+    }
+    const name = nameMatch[1];
+
+    if (closing) {
+      const open = stack.pop();
+      if (open !== name) {
+        errors.push(`Mismatched closing tag ${name}; expected ${open || "none"}`);
+        break;
+      }
+    } else {
+      if (!documentRoot) documentRoot = name;
+      elementNames.add(name);
+      const attrBody = body
+        .slice(nameMatch[0].length)
+        .replace(/\/\s*$/, "");
+      const leftover = attrBody
+        .replace(/\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*')/g, "")
+        .trim();
+      if (leftover) errors.push(`Invalid or unquoted attribute on ${name}`);
+      if (/\s[\w:.-]+\s*=\s*(?:"[^"]*<[^"]*"|'[^']*<[^']*')/.test(attrBody)) {
+        errors.push(`Unescaped < in attribute on ${name}`);
+      }
+
+      if (name === "mxCell") {
+        const attrs = parseXmlAttributes(tag);
+        const id = attrValue(attrs, "id");
+        if (id) {
+          if (cellIds.has(id)) duplicateCellIds.add(id);
+          cellIds.add(id);
+        }
+        if (attrValue(attrs, "edge") === "1") {
+          const source = attrValue(attrs, "source");
+          const target = attrValue(attrs, "target");
+          if (!source || !target) {
+            errors.push(`Edge ${id || "without id"} is missing source or target`);
+          }
+          references.push(source, target);
+        }
+      }
+      if (!selfClosing) stack.push(name);
+    }
+    cursor = tagEnd + 1;
+  }
+
+  for (const id of duplicateCellIds) errors.push(`Duplicate mxCell id ${id}`);
+  for (const reference of references.filter(Boolean)) {
+    if (!cellIds.has(reference)) errors.push(`Missing edge endpoint ${reference}`);
+  }
+
+  return { stack, errors, documentRoot, elementNames, cellIds };
+}
+
+export function validateDrawioXml(xml) {
+  if (!String(xml || "").trim()) return { valid: false, errors: ["Empty XML"] };
+  const scan = scanXmlStructure(String(xml));
+  const errors = [...scan.errors];
+  if (scan.stack.length > 0) {
+    errors.push(`Unclosed elements: ${scan.stack.join(", ")}`);
+  }
+  if (scan.documentRoot !== "mxfile") errors.push("Document root must be mxfile");
+  for (const required of ["diagram", "mxGraphModel", "root"]) {
+    if (!scan.elementNames.has(required)) errors.push(`Missing ${required} element`);
+  }
+  if (!scan.cellIds.has("0")) errors.push('Missing root mxCell id "0"');
+  if (!scan.cellIds.has("1")) errors.push('Missing root mxCell id "1"');
+  return { valid: errors.length === 0, errors: [...new Set(errors)] };
+}
+
+function extractDrawioCandidate(text) {
+  if (!text) return null;
+  let source = String(text).replace(/^\uFEFF/, "").trim();
+  const fence = source.match(/```(?:xml)?\s*([\s\S]*?)```/i);
+  if (fence) source = fence[1].trim();
+  const lower = source.toLowerCase();
+  const fileStart = lower.indexOf("<mxfile");
+  const modelStart = lower.indexOf("<mxgraphmodel");
+  const start = fileStart >= 0 ? fileStart : modelStart;
+  if (start < 0) return null;
+  const kind = fileStart >= 0 ? "mxfile" : "mxGraphModel";
+  const closing = kind === "mxfile" ? "</mxfile>" : "</mxgraphmodel>";
+  const closingStart = lower.lastIndexOf(closing);
+  const end = closingStart >= start ? closingStart + closing.length : source.length;
+  return { xml: source.slice(start, end).trim(), kind };
+}
+
+function escapeBareXmlAmpersands(xml) {
+  return String(xml).replace(
+    /&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-f]+;)/gi,
+    "&amp;",
+  );
+}
+
+function escapeLtInsideXmlAttributes(xml) {
+  let output = "";
+  let inTag = false;
+  let quote = "";
+  for (const char of String(xml)) {
+    if (!inTag) {
+      if (char === "<") inTag = true;
+      output += char;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) {
+        quote = "";
+        output += char;
+      } else {
+        output += char === "<" ? "&lt;" : char;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if (char === ">") inTag = false;
+    output += char;
+  }
+  return output;
+}
+
+export function normalizeDrawioXml(text) {
+  const candidate = extractDrawioCandidate(text);
+  if (!candidate) {
+    return { xml: null, repaired: false, needsModelRepair: true, errors: ["No draw.io XML found"] };
+  }
+
+  let xml = escapeLtInsideXmlAttributes(escapeBareXmlAmpersands(candidate.xml));
+  let repaired = xml !== candidate.xml;
+  let needsModelRepair = false;
+  const lastOpen = xml.lastIndexOf("<");
+  const lastClose = xml.lastIndexOf(">");
+  if (lastOpen > lastClose) {
+    xml = xml.slice(0, lastOpen).trimEnd();
+    repaired = true;
+    needsModelRepair = true;
+  }
+
+  const scan = scanXmlStructure(xml);
+  if (scan.errors.length === 0 && scan.stack.length > 0) {
+    if (scan.stack.some((name) => !["mxfile", "diagram", "mxGraphModel", "root"].includes(name))) {
+      needsModelRepair = true;
+    }
+    xml += scan.stack
+      .slice()
+      .reverse()
+      .map((name) => `</${name}>`)
+      .join("");
+    repaired = true;
+  }
+
+  if (candidate.kind === "mxGraphModel") {
+    xml = `<mxfile host="synthboard"><diagram id="d1" name="Page-1">${xml}</diagram></mxfile>`;
+    repaired = true;
+  }
+
+  const validation = validateDrawioXml(xml);
+  return {
+    xml: validation.valid ? xml : null,
+    repaired,
+    needsModelRepair: needsModelRepair || !validation.valid,
+    errors: validation.errors,
+  };
 }
 
 function xmlAttr(value) {
@@ -1786,9 +2010,15 @@ export async function postProcessDrawioXml(
     const candidateIds = iconCandidates.map((c) => c.id);
     let processed;
     if (iconRows) {
-      processed = applyIconRowsToXml(nextXml, iconRows, { candidateIds });
+      processed = applyIconRowsToXml(nextXml, iconRows, {
+        candidateIds,
+        fitToGeometry: true,
+      });
     } else if (candidateIds.length > 0) {
-      processed = await applyIconEnhancements(nextXml, { candidateIds });
+      processed = await applyIconEnhancements(nextXml, {
+        candidateIds,
+        fitToGeometry: true,
+      });
     } else {
       processed = applyIconRowsToXml(nextXml, [], { targetApplied: 0 });
     }
@@ -1835,7 +2065,7 @@ ${iconPrompt ? `\n${iconPrompt}\n` : ""}
 Approved diagram plan from step 1:
 ${JSON.stringify(diagramPlan, null, 2)}
 
-Implement every planned object and supported connector. Use each object's exact plan key as its mxCell id. Treat every x/y/width/height in the plan as an exact absolute page slot on the 10px grid; do not improvise alternate positions or dimensions. Preserve the planned labels, visual intent, groups, hierarchy, and layout. For standard shapes use the exact planned width and height. For retrieved library icons/logos/images, use only synthIconSize=small|medium|large|hero and keep the vertex geometry centered in its intended layout slot. Do not emit synthIconWidth, synthIconHeight, or synthIconScale; the server deterministically fits the visual to compact bounds, preserves its native aspect ratio, and keeps its center fixed. Do not add objects or relationships that are not supported by the plan or source.
+Implement every planned object and supported connector. Use each object's exact plan key as its mxCell id. Treat every x/y/width/height in the plan as an exact absolute page slot on the 10px grid; do not improvise alternate positions or dimensions. Preserve the planned labels, visual intent, groups, hierarchy, and layout. For standard shapes use the exact planned width and height. For retrieved library icons/logos/images, use only synthIconSize=small|medium|large|hero and keep the vertex geometry centered in its intended layout slot. Do not emit synthIconWidth, synthIconHeight, or synthIconScale; the server scales the visual prominently within that slot, preserves its native aspect ratio, and keeps its center fixed. Do not add objects or relationships that are not supported by the plan or source.
 
 Apply a single diagram-wide design system: same-role objects must match in shape, dimensions, typography, stroke, and color treatment; group colors must remain consistent; supporting objects must not visually overpower primary objects. Keep all labels inside their shapes, use the canvas dimensions from the plan, and route connectors through the whitespace reserved between layers.
 
@@ -1845,6 +2075,45 @@ ${sourceText}
 """
 
 Return only the draw.io <mxfile> XML.`;
+}
+
+function buildXmlRepairPrompt({ draft, diagramPlan }) {
+  return `Approved diagram plan:
+${JSON.stringify(diagramPlan, null, 2)}
+
+Malformed or incomplete draft returned by the diagram model:
+"""
+${String(draft || "").slice(0, 120_000)}
+"""
+
+Repair the draft into one complete draw.io document. Return only the <mxfile> XML.`;
+}
+
+export function buildFallbackDrawioXml(diagramPlan) {
+  const objects = diagramPlan?.objects || [];
+  const objectIds = new Set(objects.map((object) => object.key));
+  const usedIds = new Set(["0", "1", ...objectIds]);
+  const vertices = objects
+    .map((object) => {
+      const shape = drawioShapeFromFallback(object.fallbackShape) || "rectangle";
+      const parent = object.group && objectIds.has(object.group) ? object.group : "1";
+      return `<mxCell id="${xmlAttr(object.key)}" value="${xmlAttr(object.label)}" style="shape=${xmlAttr(shape)};" vertex="1" parent="${xmlAttr(parent)}"><mxGeometry x="${Number(object.x) || 0}" y="${Number(object.y) || 0}" width="${Math.max(1, Number(object.width) || 180)}" height="${Math.max(1, Number(object.height) || 80)}" as="geometry" /></mxCell>`;
+    })
+    .join("");
+  const edges = (diagramPlan?.connectors || [])
+    .filter(
+      (connector) => objectIds.has(connector.from) && objectIds.has(connector.to),
+    )
+    .map((connector, index) => {
+      let id = `edge-${index + 1}`;
+      while (usedIds.has(id)) id = `${id}-repair`;
+      usedIds.add(id);
+      return `<mxCell id="${xmlAttr(id)}" value="${xmlAttr(connector.label || "")}" style="" edge="1" parent="1" source="${xmlAttr(connector.from)}" target="${xmlAttr(connector.to)}"><mxGeometry relative="1" as="geometry" /></mxCell>`;
+    })
+    .join("");
+  const width = Math.max(850, Number(diagramPlan?.canvas?.width) || 850);
+  const height = Math.max(600, Number(diagramPlan?.canvas?.height) || 600);
+  return `<mxfile host="synthboard"><diagram id="d1" name="Page-1"><mxGraphModel grid="1" gridSize="10" guides="1" page="1" pageWidth="${width}" pageHeight="${height}"><root><mxCell id="0"/><mxCell id="1" parent="0"/>${vertices}${edges}</root></mxGraphModel></diagram></mxfile>`;
 }
 
 async function streamModelCall({
@@ -2040,18 +2309,77 @@ export async function generateDrawio(
     maxTokens,
   });
 
-  const extractedXml = extractDrawioXml(generationResult.text);
-  if (!extractedXml) {
-    log("✗ could not extract draw.io XML from response", {
-      preview: generationResult.text.slice(0, 300),
+  const initialXml = normalizeDrawioXml(generationResult.text);
+  let selectedXml = initialXml.xml;
+  let repairResult = null;
+  let repairValidationErrors = [];
+  let xmlRepairMethod = initialXml.repaired ? "local" : "none";
+  let xmlRepairModelAttempted = false;
+  let xmlRepairFallbackUsed = false;
+
+  if (!selectedXml || initialXml.needsModelRepair) {
+    xmlRepairModelAttempted = true;
+    log("diagram XML requires repair", {
+      errors: initialXml.errors,
+      contentChars: generationResult.text.length,
     });
-    throw new Error("Model did not return valid draw.io XML.");
+    try {
+      repairResult = await streamModelCall({
+        stage: "diagram-repair",
+        createCompletion,
+        model,
+        systemPrompt: XML_REPAIR_SYSTEM,
+        userPrompt: buildXmlRepairPrompt({
+          draft: selectedXml || generationResult.text,
+          diagramPlan,
+        }),
+        maxTokens,
+      });
+      const normalizedRepair = normalizeDrawioXml(repairResult.text);
+      repairValidationErrors = normalizedRepair.errors;
+      if (normalizedRepair.xml && !normalizedRepair.needsModelRepair) {
+        selectedXml = normalizedRepair.xml;
+        xmlRepairMethod = "model";
+      } else {
+        selectedXml = null;
+      }
+    } catch (err) {
+      repairValidationErrors = [err?.message || "XML repair request failed"];
+      log("diagram XML repair request failed", { message: err?.message });
+      selectedXml = null;
+    }
   }
 
-  const processedXml = await postProcessDrawioXml(extractedXml, {
+  if (!selectedXml) {
+    selectedXml = buildFallbackDrawioXml(diagramPlan);
+    xmlRepairMethod = "deterministic-fallback";
+    xmlRepairFallbackUsed = true;
+    log("using deterministic draw.io fallback", {
+      objects: diagramPlan.objects.length,
+      connectors: diagramPlan.connectors.length,
+    });
+  }
+
+  let processedXml = await postProcessDrawioXml(selectedXml, {
     iconCandidates: iconContext.candidates,
     diagramPlan,
   });
+  const finalValidation = validateDrawioXml(processedXml.xml);
+  if (!finalValidation.valid) {
+    log("post-processed XML was invalid; rebuilding from plan", {
+      errors: finalValidation.errors,
+    });
+    xmlRepairMethod = "deterministic-fallback";
+    xmlRepairFallbackUsed = true;
+    processedXml = await postProcessDrawioXml(buildFallbackDrawioXml(diagramPlan), {
+      iconCandidates: [],
+      diagramPlan,
+    });
+    const fallbackValidation = validateDrawioXml(processedXml.xml);
+    if (!fallbackValidation.valid) {
+      throw new Error(`Could not construct valid draw.io XML: ${fallbackValidation.errors.join("; ")}`);
+    }
+  }
   const { xml, visualDefaults, visualSummary, iconMeta, layout } = processedXml;
 
   if (
@@ -2072,7 +2400,11 @@ export async function generateDrawio(
   log("✓ extracted XML", { xmlChars: xml.length, visualSummary });
 
   const elapsedMs = Date.now() - pipelineStartedAt;
-  const usage = combineUsage(planningResult.usage, generationResult.usage);
+  const usage = combineUsage(
+    planningResult.usage,
+    generationResult.usage,
+    repairResult?.usage,
+  );
   const plannedLibraryVisuals = diagramPlan.objects.filter(
     (object) => object.visual !== "shape",
   ).length;
@@ -2086,13 +2418,21 @@ export async function generateDrawio(
     firstTokenMs: generationResult.firstTokenMs,
     finishReason: generationResult.finishReason,
     chunks: generationResult.chunks,
-    llmCalls: 2,
+    llmCalls: 2 + (xmlRepairModelAttempted ? 1 : 0),
     planningMaxTokens,
     planningElapsedMs: planningResult.elapsedMs,
     planningFirstTokenMs: planningResult.firstTokenMs,
     planningFinishReason: planningResult.finishReason,
     planningChunks: planningResult.chunks,
     generationElapsedMs: generationResult.elapsedMs,
+    xmlRepairAttempted: xmlRepairMethod !== "none",
+    xmlRepairMethod,
+    xmlRepairModelAttempted,
+    xmlRepairFallbackUsed,
+    xmlRepairInitialErrors: initialXml.errors,
+    xmlRepairValidationErrors: repairValidationErrors,
+    xmlRepairElapsedMs: repairResult?.elapsedMs || 0,
+    xmlRepairFinishReason: repairResult?.finishReason,
     iconLookupMs,
     planObjectCount: diagramPlan.objects.length,
     planConnectorCount: diagramPlan.connectors.length,

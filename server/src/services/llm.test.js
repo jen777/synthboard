@@ -10,15 +10,18 @@ process.env.NVIDIA_API_KEY ||= "test-nvidia-api-key";
 const {
   applyPlannedGeometry,
   applyVisualDefaults,
+  buildFallbackDrawioXml,
   buildDiagramLayout,
   buildPlanningPrompt,
   buildGenerationPrompt,
   combineUsage,
   generateDrawio,
+  normalizeDrawioXml,
   parseDiagramPlan,
   postProcessDrawioXml,
   summarizeDrawioVisuals,
   summarizeIconCandidate,
+  validateDrawioXml,
 } = await import("./llm.js");
 
 test("generation prompt includes plan-driven visual design requirements", () => {
@@ -407,6 +410,152 @@ test("two-step generation makes a planning call before the XML call", async () =
   assert.match(result.xml, /<mxfile/);
 });
 
+test("normalizes repairable draw.io XML and rejects structural corruption", () => {
+  const repairable = `<mxfile><diagram><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="team" value="<b>R&D</b>" vertex="1" parent="1"/></root>`;
+  const normalized = normalizeDrawioXml(repairable);
+
+  assert.equal(normalized.repaired, true);
+  assert.equal(normalized.needsModelRepair, false);
+  assert.match(normalized.xml, /value="&lt;b>R&amp;D&lt;\/b>"/);
+  assert.deepEqual(validateDrawioXml(normalized.xml), { valid: true, errors: [] });
+
+  const corrupt = `<mxfile><diagram><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="node"/><mxCell id="node"/><mxCell id="edge" edge="1" source="node" target="missing"/></root></mxGraphModel></diagram></mxfile>`;
+  const validation = validateDrawioXml(corrupt);
+  assert.equal(validation.valid, false);
+  assert(validation.errors.some((error) => error.includes("Duplicate mxCell id node")));
+  assert(validation.errors.some((error) => error.includes("Missing edge endpoint missing")));
+});
+
+test("repairs invalid model XML with one dedicated model pass", async () => {
+  const calls = [];
+  const plan = JSON.stringify({
+    title: "Service flow",
+    layout: "left-to-right",
+    objects: [
+      {
+        key: "service",
+        label: "API & worker",
+        role: "service",
+        visual: "shape",
+        fallbackShape: "process",
+        size: "medium",
+      },
+    ],
+    connectors: [],
+  });
+  const repairedXml = `<mxfile><diagram><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="service" value="API &amp; worker" style="shape=process;" vertex="1" parent="1"><mxGeometry x="60" y="60" width="190" height="80" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>`;
+  const outputs = [plan, "I could not produce the XML.", repairedXml];
+  const createCompletion = async (request) => {
+    const text = outputs[calls.length];
+    calls.push(request);
+    return {
+      async *[Symbol.asyncIterator]() {
+        yield { choices: [{ delta: { content: text } }] };
+        yield {
+          choices: [{ delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+        };
+      },
+    };
+  };
+
+  const result = await generateDrawio(
+    {
+      preset: "architecture",
+      sourceText: "An API and worker service.",
+      title: "Service flow",
+      maxSourceChars: 7000,
+      modelConfig: {
+        id: 7,
+        modelName: "test-model",
+        maxTokens: 4096,
+        provider: { id: 3, name: "Test provider", apiKey: "test-key" },
+      },
+    },
+    {
+      createCompletion,
+      buildIconContext: async () => ({ prompt: "", candidates: [], matches: [] }),
+    },
+  );
+
+  assert.equal(calls.length, 3);
+  assert.match(calls[2].messages[0].content, /repair malformed draw\.io XML/i);
+  assert.equal(result.meta.llmCalls, 3);
+  assert.equal(result.meta.xmlRepairMethod, "model");
+  assert.equal(result.meta.xmlRepairModelAttempted, true);
+  assert.equal(result.meta.xmlRepairFallbackUsed, false);
+  assert.equal(validateDrawioXml(result.xml).valid, true);
+  assert.match(result.xml, /value="API &amp; worker"/);
+});
+
+test("builds a valid plan-based diagram when model XML repair also fails", async () => {
+  const calls = [];
+  const outputs = [
+    JSON.stringify({
+      title: "Fallback",
+      layout: "left-to-right",
+      objects: [
+        {
+          key: "database",
+          label: "Orders database",
+          role: "storage",
+          visual: "shape",
+          fallbackShape: "cylinder",
+          size: "medium",
+        },
+      ],
+      connectors: [],
+    }),
+    "not XML",
+    "still not XML",
+  ];
+  const createCompletion = async (request) => {
+    const text = outputs[calls.length];
+    calls.push(request);
+    return {
+      async *[Symbol.asyncIterator]() {
+        yield { choices: [{ delta: { content: text } }] };
+        yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+      },
+    };
+  };
+
+  const result = await generateDrawio(
+    {
+      preset: "architecture",
+      sourceText: "Orders are stored in a database.",
+      title: "Fallback",
+      maxSourceChars: 7000,
+      modelConfig: {
+        id: 7,
+        modelName: "test-model",
+        maxTokens: 4096,
+        provider: { id: 3, name: "Test provider", apiKey: "test-key" },
+      },
+    },
+    {
+      createCompletion,
+      buildIconContext: async () => ({ prompt: "", candidates: [], matches: [] }),
+    },
+  );
+
+  assert.equal(calls.length, 3);
+  assert.equal(result.meta.xmlRepairMethod, "deterministic-fallback");
+  assert.equal(result.meta.xmlRepairFallbackUsed, true);
+  assert.equal(validateDrawioXml(result.xml).valid, true);
+  assert.match(result.xml, /id="database"/);
+  assert.match(result.xml, /shape=cylinder/);
+
+  const directFallback = buildFallbackDrawioXml({
+    objects: [
+      { key: "team", label: "R&D", fallbackShape: "process", x: 60, y: 60, width: 180, height: 80 },
+    ],
+    connectors: [],
+  });
+  assert.equal(validateDrawioXml(directFallback).valid, true);
+  assert.match(directFallback, /value="R&amp;D"/);
+});
+
 test("usage aggregation sums both LLM calls", () => {
   assert.deepEqual(
     combineUsage(
@@ -765,5 +914,5 @@ test("post-processing lays out a slot before fitting an icon around its center",
   });
 
   assert.equal(result.layout.applied, 1);
-  assert.match(result.xml, /x="377" y="217" width="56" height="56"/);
+  assert.match(result.xml, /x="354\.5" y="194\.5" width="101" height="101"/);
 });

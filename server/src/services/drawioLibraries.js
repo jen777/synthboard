@@ -8,12 +8,18 @@ const MAX_PLANNED_OBJECT_SEARCHES = 24;
 const MAX_CANDIDATES_PER_PLANNED_OBJECT = 3;
 const PLANNED_SEARCH_BATCH_SIZE = 4;
 const ICON_SIZE_PRESETS = {
-  small: { width: 28, height: 24 },
-  medium: { width: 40, height: 34 },
-  large: { width: 52, height: 44 },
-  hero: { width: 68, height: 56 },
+  small: { width: 72, height: 56 },
+  medium: { width: 104, height: 76 },
+  large: { width: 144, height: 104 },
+  hero: { width: 188, height: 136 },
 };
-const MAX_ICON_BOUNDS = { width: 96, height: 72 };
+const MAX_ICON_BOUNDS = { width: 240, height: 180 };
+const ICON_SLOT_COVERAGE = {
+  small: 0.9,
+  medium: 1,
+  large: 1.05,
+  hero: 1.12,
+};
 const AUTO_ICON_DEFAULT_TARGET = 0;
 const AUTO_ICON_MIN_SCORE = 12;
 const AUTO_ICON_MAX_REUSE = 3;
@@ -719,7 +725,7 @@ export function buildIconPrompt(candidates) {
   return `Retrieved draw.io icon/logo/object context:
 Use a listed library object when it is an exact semantic match for a concrete planned object. Use the planned standard draw.io fallback shape when no listed object is exact; never substitute a merely related logo or icon.
 Listed objects can be image icons or draw.io object/stencil styles. To use one, add synthIcon=<object id> to that vertex's style; the server will replace it with the exact library style. Keep the node label in value. Do not invent object ids.
-Set synthIconSize=small|medium|large|hero so the server fits the object into compact bounds, preserves its native aspect ratio, and keeps the original geometry center fixed. Prefer medium; use large or hero only for a genuinely primary visual. Do not emit explicit width, height, or scale controls during normal generation.
+Set synthIconSize=small|medium|large|hero so the server makes the object clearly visible, scales it to the planned layout slot, preserves its native aspect ratio, and keeps the original geometry center fixed. Prefer medium; use large or hero only for a genuinely primary visual. Do not emit explicit width, height, or scale controls during normal generation.
 Object ids:
 ${lines.join("\n")}`;
 }
@@ -759,7 +765,7 @@ export function buildPlannedIconPrompt(matches) {
 
   return `Retrieved draw.io library matches, grouped by planned object:
 Use icons, logos, or library images only from the candidate group for that planned object. Choose a candidate only when it is an exact semantic match. Otherwise use the object's planned fallback shape. Never invent, alter, or borrow an object id from another group.
-For every chosen library object, add synthIcon=<exact object id> and synthIconSize=<planned size> to the vertex style. Do not add synthIconWidth, synthIconHeight, or synthIconScale. The server applies the exact stored library style, fits it into compact bounds, preserves native aspect ratio, and recenters it on the original vertex geometry. Keep a readable text label below the visual and leave enough whitespace for it.
+For every chosen library object, add synthIcon=<exact object id> and synthIconSize=<planned size> to the vertex style. Do not add synthIconWidth, synthIconHeight, or synthIconScale. The server applies the exact stored library style, scales it prominently within the planned layout slot, preserves native aspect ratio, and recenters it on the original vertex geometry. Keep a readable text label below the visual and leave enough whitespace for it.
 ${groups.join("\n")}`;
 }
 
@@ -891,7 +897,7 @@ function stripSynthIconStyleKeys(style) {
     .join(";");
 }
 
-function requestedIconSize(requestedStyle, icon) {
+function requestedIconSize(requestedStyle, icon, slot = null) {
   const rawWidth = Number(icon.width);
   const rawHeight = Number(icon.height);
   const nativeWidth = Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : 64;
@@ -899,7 +905,14 @@ function requestedIconSize(requestedStyle, icon) {
   const aspect = Math.min(6, Math.max(1 / 6, nativeWidth / nativeHeight || 1));
 
   const preset = styleValueCaseInsensitive(requestedStyle, "synthIconSize")?.toLowerCase();
-  const presetBounds = ICON_SIZE_PRESETS[preset] || null;
+  let presetBounds = ICON_SIZE_PRESETS[preset] || null;
+  if (presetBounds && slot?.width > 0 && slot?.height > 0) {
+    const coverage = ICON_SLOT_COVERAGE[preset] || ICON_SLOT_COVERAGE.medium;
+    presetBounds = {
+      width: Math.min(presetBounds.width, slot.width * coverage),
+      height: Math.min(presetBounds.height, slot.height * coverage),
+    };
+  }
   const explicitScale = boundedNumber(styleValueCaseInsensitive(requestedStyle, "synthIconScale"), {
     min: 0.35,
     max: 3,
@@ -955,6 +968,15 @@ function geometryNumber(attrs, name) {
   if (value === "") return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function geometryBounds(cellXml) {
+  const geometryTag = String(cellXml).match(/<mxGeometry\b[^>]*\/?>/i)?.[0];
+  if (!geometryTag) return null;
+  const attrs = parseAttributes(geometryTag);
+  const width = geometryNumber(attrs, "width");
+  const height = geometryNumber(attrs, "height");
+  return width > 0 && height > 0 ? { width, height } : null;
 }
 
 function formatGeometryNumber(value) {
@@ -1054,7 +1076,10 @@ export function explicitIconIdsFromXml(xml) {
   return unique(ids);
 }
 
-export async function applyIconEnhancements(xml, { candidateIds = [] } = {}) {
+export async function applyIconEnhancements(
+  xml,
+  { candidateIds = [], fitToGeometry = false } = {},
+) {
   const placeholderIds = explicitIconIdsFromXml(xml);
   const ids = unique([...placeholderIds, ...candidateIds]);
   if (ids.length === 0) return { xml, applied: [], missing: [], autoApplied: [] };
@@ -1067,6 +1092,7 @@ export async function applyIconEnhancements(xml, { candidateIds = [] } = {}) {
   );
   return applyIconRowsToXml(xml, rows, {
     candidateIds,
+    fitToGeometry,
   });
 }
 
@@ -1225,7 +1251,7 @@ function summarizeAutoIconEligibility(xml) {
 export function applyIconRowsToXml(
   xml,
   rows,
-  { candidateIds = [], targetApplied = null } = {},
+  { candidateIds = [], targetApplied = null, fitToGeometry = false } = {},
 ) {
   const byId = new Map(rows.map((row) => [row.id, row]));
   const autoCandidates = candidateRows(rows, candidateIds);
@@ -1295,9 +1321,10 @@ export function applyIconRowsToXml(
       }
 
       const style = mergedIconStyle(icon.style, requestedStyle);
+      const slot = fitToGeometry ? geometryBounds(cellXml) : null;
       const size =
-        requestedIconSize(requestedStyle, icon) ||
-        requestedIconSize("synthIconSize=medium", icon);
+        requestedIconSize(requestedStyle, icon, slot) ||
+        requestedIconSize("synthIconSize=medium", icon, slot);
       const sizedCell = applyGeometrySize(cellXml, size);
       const nextOpenTag =
         sizedCell.match(/^<mxCell\b[^>]*?(?:\/>|>)/i)?.[0] || openTag;
